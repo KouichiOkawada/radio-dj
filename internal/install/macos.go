@@ -5,6 +5,7 @@ package install
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,18 @@ func Install(bin string) error {
 			return err
 		}
 		bin = b
+	}
+	// Install to a stable path so launchd survives a repo move/delete.
+	stable := filepath.Join(os.Getenv("HOME"), ".local", "bin", "radio-dj")
+	if err := os.MkdirAll(filepath.Dir(stable), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(stable), err)
+	}
+	if bin != stable {
+		if err := copyFile(bin, stable); err != nil {
+			return fmt.Errorf("install binary to %s: %w", stable, err)
+		}
+		bin = stable
+		fmt.Printf("✓ binary installed → %s\n", bin)
 	}
 	plist, err := plistPath()
 	if err != nil {
@@ -106,10 +119,22 @@ func envBlock() string {
 	return "<key>EnvironmentVariables</key>\n  <dict>\n    " + strings.Join(lines, "\n    ") + "\n  </dict>"
 }
 
-func stateDir() string {
-	home := os.Getenv("HOME")
-	if _, err := os.Stat(home + "/.tevunah"); err == nil {
-		return home + "/.tevunah/radio-dj"
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
 	}
-	return home + "/.radio-dj"
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+// stateDir is the standalone state directory (~/.radio-dj).
+func stateDir() string {
+	return os.Getenv("HOME") + "/.radio-dj"
 }

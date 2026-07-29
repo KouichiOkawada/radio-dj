@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RADIO-DJ</title>
+<style>
+  :root{
+    --bg:#efe6d2; --paper:#f7efdc; --ink:#221c16; --soft:#6b5d4a;
+    --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
+    --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{ background:var(--bg); color:var(--ink);
+    font-family:"Helvetica Neue",Arial,sans-serif;
+    display:flex; align-items:center; justify-content:center; padding:18px;
+    /* brutalist bg grid */
+    background-image:linear-gradient(var(--bg),var(--bg)),
+      repeating-linear-gradient(0deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px),
+      repeating-linear-gradient(90deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px);
+  }
+  .stack{ width:100%; max-width:540px; display:grid; gap:14px; }
+
+  /* brutalist block primitive: thick border + hard offset shadow */
+  .blk{ background:var(--paper); border:3px solid var(--line);
+    box-shadow:6px 6px 0 var(--line); }
+
+  /* header */
+  .bar{ display:flex; align-items:stretch; }
+  .bar > *{ padding:12px 14px; display:flex; align-items:center; gap:8px;
+    font-weight:800; text-transform:uppercase; letter-spacing:2px; }
+  .brand{ background:var(--gold); border-right:3px solid var(--line); font-size:15px; flex:0 0 auto; }
+  .freq{ background:var(--paper); border-right:3px solid var(--line); color:var(--soft); flex:0 0 auto; }
+  .onair{ margin-left:auto; background:var(--paper); }
+  .led{ width:14px; height:14px; background:#c9bda8; border:2px solid var(--line); }
+  .playing .led{ background:var(--onair); animation:blk 1s steps(2) infinite; }
+  @keyframes blk{ 50%{ background:var(--paper); } }
+  .playing .onair{ background:var(--onair); color:#fff; }
+  .playing .led{ border-color:#fff; }
+
+  /* cassette */
+  .cass{ background:var(--shell); padding:18px 18px 14px; }
+  .window{ display:flex; align-items:center; gap:0; }
+  .rw{ width:88px; height:88px; border-radius:50%; background:var(--window);
+    border:3px solid #3a2f25; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .reel{ width:66px; height:66px; border-radius:50%; position:relative;
+    background:radial-gradient(circle, var(--reel) 0 18%, #6e5530 19% 22%, var(--reel) 23%);
+    box-shadow:inset 0 0 0 3px #4a3a22; }
+  .reel::before{ content:""; position:absolute; inset:0; border-radius:50%;
+    background:conic-gradient(from 0deg,
+      #221c16 0 30deg,transparent 0 60deg,#221c16 0 90deg,transparent 0 120deg,
+      #221c16 0 150deg,transparent 0 180deg,#221c16 0 210deg,transparent 0 240deg,
+      #221c16 0 270deg,transparent 0 300deg,#221c16 0 330deg,transparent 0 360deg);
+    -webkit-mask:radial-gradient(circle,transparent 0 16px,#000 17px);
+            mask:radial-gradient(circle,transparent 0 16px,#000 17px); }
+  .playing .reel{ animation:spin 2.6s linear infinite; }
+  .playing .reel:last-child{ animation-duration:3.2s; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .tape{ flex:1 1 auto; height:10px; background:#3a2f25; margin:0 6px;
+    border-top:2px solid #5a4a36; border-bottom:2px solid #1a1410; }
+  .teeth{ display:flex; justify-content:space-between; padding:10px 6px 0; }
+  .teeth i{ width:8px; height:14px; background:#3a2f25; display:block; }
+
+  /* now playing sticker */
+  .now{ margin-top:14px; background:var(--paper); border:2px solid #000;
+    padding:12px 14px; transform:rotate(-.5deg); }
+  .k{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--soft); font-weight:800; }
+  .title{ font-size:18px; font-weight:900; text-transform:uppercase; margin-top:4px; display:flex; gap:10px; align-items:center; }
+  .eq{ display:inline-flex; gap:3px; height:18px; align-items:flex-end; }
+  .eq i{ width:4px; height:5px; background:var(--onair); display:block; }
+  .playing .eq i{ animation:eq .7s steps(4) infinite alternate; }
+  .eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}
+  .eq i:nth-child(4){animation-delay:.36s}.eq i:nth-child(5){animation-delay:.48s}
+  @keyframes eq{ to{ height:16px; } }
+  .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; }
+
+  /* meta: next + requests */
+  .meta{ display:grid; gap:12px; }
+  .row{ padding:12px 14px; }
+  .row .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; }
+  .next .lab{ color:var(--sage); }
+  .reqs .lab{ color:var(--rose); }
+  .next .v{ font-weight:800; margin-top:4px; }
+  .reqs ul{ margin:6px 0 0 16px; }
+  .reqs li{ font-weight:700; padding:2px 0; }
+
+  /* request */
+  .ask{ padding:14px; }
+  .ask form{ display:flex; gap:0; }
+  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none;
+    background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; }
+  .ask input:focus{ outline:none; background:#fffdf3; }
+  .ask button{ padding:0 20px; border:3px solid var(--line); background:var(--rose); color:var(--ink);
+    font-family:inherit; font-weight:900; text-transform:uppercase; letter-spacing:1px; cursor:pointer; }
+  .ask button:active{ transform:translate(2px,2px); box-shadow:none; }
+  .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
+
+  /* transport */
+  .ctrl{ display:flex; gap:14px; }
+  .ctrl button{ flex:1; padding:16px; border:3px solid var(--line); cursor:pointer;
+    font-family:inherit; font-size:15px; font-weight:900; text-transform:uppercase; letter-spacing:2px; }
+  .play{ background:var(--sage); color:var(--ink); box-shadow:6px 6px 0 var(--line); }
+  .play:active{ transform:translate(6px,6px); box-shadow:none; }
+  .stop{ background:var(--paper); color:var(--onair); box-shadow:6px 6px 0 var(--line); }
+  .stop:active{ transform:translate(6px,6px); box-shadow:none; }
+
+  .foot{ display:flex; justify-content:space-between; padding:8px 14px;
+    font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft);
+    background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
+</style>
+</head>
+<body>
+  <div class="stack" id="deck">
+
+    <div class="blk bar">
+      <span class="brand">RADIO·DJ</span>
+      <span class="freq">88.7</span>
+      <span class="onair"><span class="led"></span> ON AIR</span>
+    </div>
+
+    <div class="blk cass">
+      <div class="window">
+        <div class="rw"><div class="reel"></div></div>
+        <div class="tape"></div>
+        <div class="rw"><div class="reel"></div></div>
+      </div>
+      <div class="teeth"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="now">
+        <div class="k">Ahora suena</div>
+        <div class="title">
+          <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+          <span id="title">SINTONIZANDO</span>
+        </div>
+        <div class="artist" id="artist"></div>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div class="blk row next">
+        <div class="lab">▶ Siguiente</div>
+        <div class="v" id="next">—</div>
+      </div>
+      <div class="blk row reqs" id="reqwrap" style="display:none">
+        <div class="lab">✉ Pedidos</div>
+        <ul id="reqlist"></ul>
+      </div>
+    </div>
+
+    <div class="blk ask">
+      <form id="form">
+        <input id="q" placeholder="Pedí una canción o artista…" autocomplete="off">
+        <button type="submit">Pedir</button>
+      </form>
+      <div class="h">Tu pedido entra en la próxima tanda</div>
+    </div>
+
+    <div class="ctrl">
+      <button class="play" id="play">▶ Play</button>
+      <button class="stop" id="stop">■ Stop</button>
+    </div>
+
+    <div class="foot">
+      <span>RDJ-0001</span>
+      <span id="state">EN PAUSA</span>
+    </div>
+  </div>
+
+<audio id="audio" preload="none"></audio>
+<script>
+  const host = location.hostname;
+  const audio = document.getElementById('audio');
+  audio.src = 'http://'+host+':7702/stream.mp3';
+  const $ = id => document.getElementById(id);
+  const deck = $('deck');
+  const playing = on => { deck.classList.toggle('playing', on); $('state').textContent = on ? 'AL AIRE' : 'EN PAUSA'; };
+  $('play').onclick = ()=> audio.play();
+  $('stop').onclick = ()=>{ audio.pause(); audio.currentTime=0; playing(false); };
+  audio.addEventListener('playing', ()=>playing(true));
+  audio.addEventListener('pause',  ()=>playing(false));
+  $('form').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const q = $('q').value.trim(); if(!q) return;
+    $('q').value='';
+    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); poll(); }catch(_){}
+  });
+  async function poll(){
+    try{
+      const j = await fetch('/now-playing').then(r=>r.json());
+      const c = j.current||{};
+      $('title').textContent = (c.title||'—').toUpperCase();
+      $('artist').textContent = c.artist||'';
+      $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
+      const rs = j.requests||[];
+      if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+r.text+'</li>').join(''); }
+      else { $('reqwrap').style.display='none'; }
+    }catch(_){}
+  }
+  poll(); setInterval(poll, 4000);
+</script>
+</body>
+</html>

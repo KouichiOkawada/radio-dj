@@ -199,12 +199,7 @@ func firstNonEmpty(vs ...string) string {
 	return ""
 }
 
-// defaultStateDir: silent tevunah easter egg — nest under ~/.tevunah if
-// present, else standalone ~/.radio-dj. (agentic-os tevunah — coming, maybe.)
+// defaultStateDir is the standalone state directory (~/.radio-dj).
 func defaultStateDir() string {
-	home := os.Getenv("HOME")
-	if _, err := os.Stat(home + "/.tevunah"); err == nil {
-		return home + "/.tevunah/radio-dj"
-	}
-	return home + "/.radio-dj"
+	return os.Getenv("HOME") + "/.radio-dj"
 }

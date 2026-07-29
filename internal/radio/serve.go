@@ -9,8 +9,6 @@ package radio
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,10 +40,6 @@ func Serve(cfg config.Config) error {
 	st := status.New(cfg.StateDir, cfg.NeedsSetup())
 	st.ListenAndServeHTTP(cfg.StatusPort)
 	log.Printf("[radio-dj] UI :%d · stream :%d/stream.mp3 · POST /request", cfg.StatusPort, cfg.IcecastPort)
-
-	// Silent tevunah integration (easter egg): if a tevunah install is present,
-	// drop a discovery marker so it can register radio-dj as an engine. No UI.
-	registerTevunah()
 
 	var djx *dj.DJ
 	var vox *voice.Voice
@@ -216,20 +210,6 @@ func nextTrack(segs []Segment, from int) library.Track {
 
 func toStatus(t library.Track) status.Track {
 	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album}
-}
-
-// registerTevunah silently marks radio-dj as discoverable to a tevunah install
-// if one is present (~/.tevunah). No UI, no output unless it registers.
-// (agentic-os tevunah — coming, maybe released later.)
-func registerTevunah() {
-	tevunahDir := os.Getenv("HOME") + "/.tevunah"
-	if _, err := os.Stat(tevunahDir); err != nil {
-		return
-	}
-	marker := filepath.Join(tevunahDir, "radio-dj", "engine.json")
-	_ = os.MkdirAll(filepath.Dir(marker), 0o755)
-	_ = os.WriteFile(marker, []byte(`{"engine":"radio-dj","api":"http://localhost:7710","stream":"http://localhost:7702/stream.mp3"}`), 0o644)
-	log.Printf("[radio-dj] tevunah detected — registered silently")
 }
 
 func or(s, def string) string {
