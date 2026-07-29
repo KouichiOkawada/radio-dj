@@ -1,0 +1,63 @@
+openapi: 3.1.0
+info:
+  title: radio-dj API
+  version: 1.0.0
+  description: Personal 24/7 AI-DJ radio station. HTTP API for now-playing, requests, and liveness; audio is a separate Icecast stream.
+servers:
+  - url: http://localhost:7710
+    description: local status API
+paths:
+  /now-playing:
+    get:
+      summary: Current + next track, request queue, on-air status
+      responses:
+        '200':
+          description: now-playing payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NowPlaying' }
+  /request:
+    post:
+      summary: Submit a free-text song request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string } } }
+      responses:
+        '200':
+          description: request queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Request' }
+  /health:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: on-air
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string } } }
+components:
+  schemas:
+    Track:
+      type: object
+      properties:
+        title:  { type: string }
+        artist: { type: string }
+        album:  { type: string }
+    Request:
+      type: object
+      properties:
+        text:    { type: string }
+        askedAt: { type: string, format: date-time }
+        status:  { type: string, enum: [queued, matched, not-found] }
+    NowPlaying:
+      type: object
+      properties:
+        current:   { $ref: '#/components/schemas/Track' }
+        next:      { allOf: [{ $ref: '#/components/schemas/Track' }], nullable: true }
+        requests:  { type: array, items: { $ref: '#/components/schemas/Request' } }
+        playing:   { type: boolean }
+        startedAt: { type: string, format: date-time }
