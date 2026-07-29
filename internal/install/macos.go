@@ -87,6 +87,11 @@ func plistPath() (string, error) {
 // process env (only RDJ_* + ZAI_API_KEY, so keys/config ride with the agent).
 func envBlock() string {
 	var lines []string
+	// Bake in PATH so launchd's minimal environment still finds ffmpeg,
+	// edge-tts and any other tool radio-dj shells out to.
+	if path := os.Getenv("PATH"); path != "" {
+		lines = append(lines, fmt.Sprintf("<key>PATH</key><string>%s</string>", path))
+	}
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "RDJ_") || strings.HasPrefix(e, "ZAI_API_KEY") {
 			kv := strings.SplitN(e, "=", 2)

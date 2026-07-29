@@ -30,16 +30,41 @@ type Streamer struct {
 	voiceQ chan []byte
 	done   chan struct{}
 	mu     sync.Mutex // guards vw writes
+	ffmpeg string     // resolved ffmpeg binary (launchd has a minimal PATH)
 }
 
 // OpenStreamer starts the master with the ducking filtergraph. Both inputs are
 // live pipes; the caller feeds music via Play and voice via Interject.
+// findFFmpeg locates the ffmpeg binary: PATH first, then the usual Homebrew
+// locations. launchd (and other minimal-PATH daemon contexts) miss
+// /opt/homebrew/bin, so the master/Play/Interject must resolve it explicitly.
+func findFFmpeg() (string, error) {
+	if bin, err := exec.LookPath("ffmpeg"); err == nil {
+		return bin, nil
+	}
+	for _, p := range []string{
+		"/opt/homebrew/bin/ffmpeg", // macOS Apple Silicon
+		"/usr/local/bin/ffmpeg",   // macOS Intel / manual install
+		"/opt/homebrew/opt/ffmpeg/bin/ffmpeg",
+		"/usr/bin/ffmpeg", // Linux
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("ffmpeg binary not found — install it (macOS: `brew install ffmpeg`)")
+}
+
 func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate int) (*Streamer, error) {
+	ffmpegBin, err := findFFmpeg()
+	if err != nil {
+		return nil, err
+	}
 	// [0:a]=music, [1:a]=voice. sidechaincompress ducks music on voice; amix
 	// overlays voice. release=600ms = smooth fade back up after the DJ stops.
 	filter := "[0:a][1:a]sidechaincompress=threshold=0.015:ratio=12:attack=5:release=600[d];" +
 		"[d][1:a]amix=inputs=2:duration=first:normalize=0:weights=1 1.3[a]"
-	master := exec.Command("ffmpeg",
+	master := exec.Command(ffmpegBin,
 		"-loglevel", "warning",
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:3",
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:4",
@@ -68,6 +93,7 @@ func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate i
 		master: master, w: mw, vw: vw,
 		voiceQ: make(chan []byte, 8),
 		done:   make(chan struct{}),
+		ffmpeg: ffmpegBin,
 	}
 	go s.voiceFeeder()
 	return s, nil
@@ -107,7 +133,7 @@ func (s *Streamer) voiceFeeder() {
 // Play decodes one music segment to PCM (paced by -re) and writes it to the
 // music pipe. Music-only now — ducking is live via the voice input.
 func (s *Streamer) Play(segment string) error {
-	dec := exec.Command("ffmpeg",
+	dec := exec.Command(s.ffmpeg,
 		"-loglevel", "error", "-re", "-i", segment,
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1")
 	dec.Stdout = s.w
@@ -119,7 +145,7 @@ func (s *Streamer) Play(segment string) error {
 // master ducks the music and overlays the voice in real-time. Non-blocking:
 // returns once queued. Safe to call while a song is playing.
 func (s *Streamer) Interject(voiceFile string) error {
-	pcm, err := exec.Command("ffmpeg",
+	pcm, err := exec.Command(s.ffmpeg,
 		"-loglevel", "error", "-i", voiceFile,
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1").Output()
 	if err != nil {
