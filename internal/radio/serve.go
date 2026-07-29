@@ -1,0 +1,235 @@
+// Package radio is the 24/7 loop with a PERSISTENT source + prefetch:
+//   - ONE ffmpeg master (package icecast) stays connected to Icecast forever.
+//   - A producer goroutine builds the NEXT tanda (GLM+qohl voices) while the
+//     current one plays, so the master always has PCM to encode → it never
+//     starves → icecast never drops the source → no 404 between tandas.
+// Now-playing is set synchronously when each track starts (no timing drift).
+package radio
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"radio-dj/internal/config"
+	"radio-dj/internal/dj"
+	"radio-dj/internal/icecast"
+	"radio-dj/internal/library"
+	"radio-dj/internal/skills"
+	"radio-dj/internal/status"
+	"radio-dj/internal/supervisor"
+	"radio-dj/internal/voice"
+)
+
+// Segment is one item fed to the streamer: a DJ voice clip or a music track.
+type Segment struct {
+	Path    string
+	IsVoice bool
+	Meta    library.Track // valid when !IsVoice
+}
+
+// Serve runs the station until fatally errored. The streamer is opened once
+// and kept alive across the whole loop.
+func Serve(cfg config.Config) error {
+	lib, err := library.New(cfg.Source, cfg.Library, cfg.NavidromeURL, cfg.NavidromeUser, cfg.NavidromePass)
+	if err != nil {
+		return fmt.Errorf("library: %w", err)
+	}
+	st := status.New(cfg.StateDir, cfg.NeedsSetup())
+	st.ListenAndServeHTTP(cfg.StatusPort)
+	log.Printf("[radio-dj] UI :%d · stream :%d/stream.mp3 · POST /request", cfg.StatusPort, cfg.IcecastPort)
+
+	// Silent tevunah integration (easter egg): if a tevunah install is present,
+	// drop a discovery marker so it can register radio-dj as an engine. No UI.
+	registerTevunah()
+
+	var djx *dj.DJ
+	var vox *voice.Voice
+	var pool *skills.Pool
+	if cfg.DJEnabled {
+		djx = dj.New(cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName)
+		vox = voice.New(cfg.VoiceProvider, cfg.Voice, cfg.VoiceCmd)
+		pool = skills.NewPool(cfg.StationName, cfg.LocationName, cfg.Latitude, cfg.Longitude, skills.LoadDir(cfg.StateDir))
+		log.Printf("[radio-dj] DJ on: %s @ %s · every %d · bed=%s",
+			cfg.GLMModel, cfg.LocationName, cfg.DJEvery, or(cfg.Bed, "(none)"))
+	} else {
+		log.Printf("[radio-dj] DJ off (ZAI_API_KEY + RDJ_VOICE_CMD to enable)")
+	}
+
+	// Bring up icecast ourselves unless an external one is configured.
+	srcPw := cfg.IcecastSourcePW
+	if srcPw == "" {
+		ic, ierr := supervisor.EnsureIcecast(cfg.StateDir, cfg.IcecastHost, cfg.IcecastPort)
+		if ierr != nil {
+			return fmt.Errorf("ensure icecast: %w", ierr)
+		}
+		srcPw = ic.SourcePassword()
+		log.Printf("[radio-dj] icecast supervisado (source pw %s…)", srcPw[:8])
+	}
+
+	streamer, err := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, srcPw, cfg.StationName, cfg.Bitrate)
+	if err != nil {
+		return fmt.Errorf("open streamer: %w", err)
+	}
+	defer streamer.Close()
+	st.MarkPlaying(true)
+	log.Printf("[radio-dj] source persistente ON AIR ✓")
+
+	// Producer: prefetch tandas so the master never starves.
+	prepared := make(chan []Segment, 2)
+	go func() {
+		tc := 0
+		for {
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, &tc)
+			if berr != nil {
+				log.Printf("[radio-dj] build: %v — retry 10s", berr)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			log.Printf("[radio-dj] tanda lista (%d segmentos%s) — prefetched", len(segs), reqs)
+			prepared <- segs
+		}
+	}()
+
+	// Consumer: play each tanda as it arrives; the next is already being built.
+	tandaN := 0
+	for segs := range prepared {
+		tandaN++
+		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
+		pendingVoice := ""
+		for i, seg := range segs {
+			if seg.IsVoice {
+				pendingVoice = seg.Path // overlay over the next song (live ducking)
+				continue
+			}
+			st.SetCurrent(toStatus(seg.Meta), toStatus(nextTrack(segs, i)))
+			log.Printf("▶ %s — %s", seg.Meta.Title, seg.Meta.Artist)
+			if pendingVoice != "" {
+				vf := pendingVoice
+				pendingVoice = ""
+				go func() {
+					time.Sleep(700 * time.Millisecond) // let the intro land
+					if err := streamer.Interject(vf); err != nil {
+						log.Printf("[dj] interject: %v", err)
+					}
+				}()
+			}
+			if perr := streamer.Play(seg.Path); perr != nil {
+				log.Printf("[radio-dj] segment error: %v", perr)
+			}
+			if !streamer.Alive() {
+				log.Printf("[radio-dj] master caído — reabriendo source")
+				streamer.Close()
+				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.IcecastSourcePW, cfg.StationName, cfg.Bitrate)
+				if err != nil {
+					log.Printf("[radio-dj] reopen failed: %v — retry 5s", err)
+					time.Sleep(5 * time.Second)
+				}
+			}
+		}
+		// tail voice (e.g. outro with no song after it) — overlay over silence
+		if pendingVoice != "" {
+			if err := streamer.Interject(pendingVoice); err != nil {
+				log.Printf("[dj] interject: %v", err)
+			}
+		}
+	}
+	return nil
+}
+
+// buildTanda returns the ordered segments for one batch (requested songs
+// first, then fresh picks), with DJ voice intros interleaved. Voices are
+// generated here (GLM+qohl) — called by the producer ahead of playback.
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, trackCount *int) (segs []Segment, reqs string, err error) {
+	addVoice := func(text string) {
+		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
+			return
+		}
+		if vf, verr := vox.Speak(text); verr == nil {
+			segs = append(segs, Segment{Path: vf, IsVoice: true})
+			log.Printf("[dj] %s", text)
+		} else {
+			log.Printf("[dj] voice: %v", verr)
+		}
+	}
+	addTrack := func(t library.Track) {
+		segs = append(segs, Segment{Path: t.Src, Meta: t})
+	}
+
+	matched := 0
+	for _, req := range st.DrainRequests() {
+		ms, _ := lib.Search(req.Text)
+		if len(ms) > 0 {
+			t := ms[0]
+			if cfg.DJEnabled {
+				addVoice(skills.RequestAck(djx, t, req.Text))
+			}
+			addTrack(t)
+			matched++
+			log.Printf("[request] %q → %s — %s", req.Text, t.Title, t.Artist)
+		} else {
+			log.Printf("[request] no match %q", req.Text)
+		}
+	}
+
+	for i := 0; i < cfg.Chunk; i++ {
+		t, e := lib.Next()
+		if e != nil {
+			break
+		}
+		if cfg.DJEnabled && *trackCount%cfg.DJEvery == 0 {
+			if (*trackCount/cfg.DJEvery)%2 == 0 {
+				addVoice(skills.Intro(djx, t))
+			} else {
+				addVoice(pool.Segue(djx, t))
+			}
+		}
+		addTrack(t)
+		*trackCount++
+	}
+
+	if len(segs) == 0 {
+		return nil, "", fmt.Errorf("no segments")
+	}
+	if matched > 0 {
+		reqs = fmt.Sprintf(", %d pedido(s)", matched)
+	}
+	return segs, reqs, nil
+}
+
+func nextTrack(segs []Segment, from int) library.Track {
+	for j := from + 1; j < len(segs); j++ {
+		if !segs[j].IsVoice {
+			return segs[j].Meta
+		}
+	}
+	return library.Track{}
+}
+
+func toStatus(t library.Track) status.Track {
+	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album}
+}
+
+// registerTevunah silently marks radio-dj as discoverable to a tevunah install
+// if one is present (~/.tevunah). No UI, no output unless it registers.
+// (agentic-os tevunah — coming, maybe released later.)
+func registerTevunah() {
+	tevunahDir := os.Getenv("HOME") + "/.tevunah"
+	if _, err := os.Stat(tevunahDir); err != nil {
+		return
+	}
+	marker := filepath.Join(tevunahDir, "radio-dj", "engine.json")
+	_ = os.MkdirAll(filepath.Dir(marker), 0o755)
+	_ = os.WriteFile(marker, []byte(`{"engine":"radio-dj","api":"http://localhost:7710","stream":"http://localhost:7702/stream.mp3"}`), 0o644)
+	log.Printf("[radio-dj] tevunah detected — registered silently")
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
