@@ -141,6 +141,12 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		_ = json.NewEncoder(w).Encode(req)
 	})
 	mux.HandleFunc("/onboarding", func(w http.ResponseWriter, r *http.Request) {
+		// Once configured, the wizard closes — /onboarding redirects to the
+		// player. To reconfigure, edit config.json (or delete it) and restart.
+		if !s.needsSetup {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
 		if r.Method == http.MethodPost {
 			body, _ := io.ReadAll(r.Body)
 			_ = os.MkdirAll(s.dir, 0o755)

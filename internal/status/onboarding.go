@@ -1,9 +1,12 @@
 package status
 
-// onboardingPage — professional first-run wizard. No emoji icons, clean
-// sections. Language selector, music source, BYOK LLM (provider presets +
-// URL + key + model + live Test), and voice (provider + voice). POSTs JSON
-// to /onboarding which writes config.json.
+// onboardingPage — first-run wizard. Tube-radio cabinet: warm charcoal
+// background, amber FM-dial glow, cream text, reusing the player's exact
+// neobrutalist tokens (3px borders, 6px hard offset shadows, Helvetica Neue).
+// Native <select>s are hidden in place (ids preserved) and replaced by an
+// accessible custom dropdown that two-way-syncs .value + dispatches change.
+// Language, music source, BYOK LLM (provider presets + URL + key + model +
+// live Test), voice (provider + voice). POSTs JSON to /onboarding.
 const onboardingPage = `<!doctype html>
 <html lang="es">
 <head>
@@ -11,69 +14,128 @@ const onboardingPage = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>radio-dj · setup</title>
 <style>
-  :root{--bg:#f4f1ec;--paper:#fff;--ink:#1a1a1a;--soft:#6b6b6b;--line:#1a1a1a;--accent:#c9795a;--ok:#3a8a3a;--err:#b03a3a}
+  :root{
+    --cabinet:#1c1714; --panel:#241e18; --well:#2e2620; --line:#080604;
+    --cream:#f0e6d2; --soft:#9a8a72; --gold:#e8c464; --amber:#f0b450;
+    --onair:#d6453a; --sage:#9bbf94; --edge:#3a2f25;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-  .card{width:100%;max-width:560px;background:var(--paper);border:2px solid var(--line);box-shadow:6px 6px 0 var(--line)}
-  .hd{padding:18px 24px;border-bottom:2px solid var(--line);display:flex;justify-content:space-between;align-items:center}
-  .hd h1{font-size:18px;font-weight:800;letter-spacing:.5px}
-  .hd .v{font-size:11px;color:var(--soft);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+  body{background:var(--cabinet);color:var(--cream);
+    font-family:"Helvetica Neue",Arial,sans-serif;min-height:100vh;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(232,196,100,.025) 0 2px, transparent 2px 32px),
+      repeating-linear-gradient(90deg, rgba(232,196,100,.025) 0 2px, transparent 2px 32px);}
+  .card{width:100%;max-width:580px;background:var(--panel);
+    border:3px solid var(--line);box-shadow:8px 8px 0 var(--line)}
+
+  /* header + FM dial */
+  .hd{border-bottom:3px solid var(--line)}
+  .brand{display:flex;justify-content:space-between;align-items:baseline;padding:16px 22px 10px}
+  .brand h1{font-size:18px;font-weight:900;letter-spacing:2px;color:var(--cream)}
+  .brand .v{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--gold)}
+  .dial{height:20px;background:#0e0a07;position:relative;overflow:hidden;border-top:3px solid var(--line);
+    background-image:
+      repeating-linear-gradient(90deg, rgba(232,196,100,.45) 0 1px, transparent 1px 8px),
+      repeating-linear-gradient(90deg, rgba(232,196,100,.85) 0 2px, transparent 2px 40px);
+    box-shadow:inset 0 0 22px rgba(240,180,80,.35)}
+  .dial::before{content:"";position:absolute;left:28%;top:0;bottom:0;width:2px;
+    background:var(--onair);box-shadow:0 0 8px var(--onair)}
+  .dial::after{content:"";position:absolute;inset:0;
+    background:radial-gradient(ellipse at 30% 60%, rgba(240,180,80,.22), transparent 65%)}
+
   .bd{padding:24px}
-  .sec{margin-bottom:22px}
-  .sec h2{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--soft);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e0ddd6}
-  label{display:block;font-size:12px;font-weight:700;margin:10px 0 4px}
-  input,select{width:100%;padding:10px 12px;border:2px solid var(--line);background:var(--paper);font-family:inherit;font-size:14px;font-weight:500}
-  input:focus,select:focus{outline:none;border-color:var(--accent)}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .row{display:flex;gap:8px;align-items:flex-end}
+  .sec{margin-bottom:24px}
+  .sec h2{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;
+    color:var(--gold);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--edge)}
+  label{display:block;font-size:12px;font-weight:700;margin:12px 0 5px;color:var(--cream)}
+  input{width:100%;padding:10px 12px;border:3px solid var(--line);background:var(--well);
+    color:var(--cream);font-family:inherit;font-size:14px;font-weight:500;box-shadow:4px 4px 0 var(--line)}
+  input::placeholder{color:#6e5e48}
+  input:focus{outline:none;border-color:var(--gold);
+    box-shadow:4px 4px 0 var(--line),0 0 0 3px rgba(232,196,100,.18)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .row{display:flex;gap:10px;align-items:flex-end}
   .row>div{flex:1}
-  .test{padding:10px 16px;border:2px solid var(--line);background:#eee;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;white-space:nowrap}
-  .test:active{transform:translate(1px,1px)}
-  .res{font-size:12px;font-weight:700;margin-top:6px;min-height:16px}
-  .res.ok{color:var(--ok)} .res.err{color:var(--err)}
-  .save{width:100%;margin-top:8px;padding:14px;border:2px solid var(--line);background:var(--ink);color:#fff;font-weight:800;font-size:15px;text-transform:uppercase;letter-spacing:1px;cursor:pointer}
-  .save:active{transform:translate(2px,2px)}
-  .done{margin-top:14px;padding:14px;border:2px solid var(--ok);background:#eaf3ea;font-weight:700;display:none}
-  .hint{font-size:11px;color:var(--soft);margin-top:3px}
+
+  /* custom dropdown (real select hidden in place, same id) */
+  .dd{position:relative;width:100%}
+  .dd-btn{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:10px 12px;border:3px solid var(--line);background:var(--well);color:var(--cream);
+    font-family:inherit;font-size:14px;font-weight:700;text-align:left;cursor:pointer;
+    box-shadow:4px 4px 0 var(--line)}
+  .dd-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--line)}
+  .dd-btn[aria-expanded="true"]{border-color:var(--gold)}
+  .dd-btn:focus-visible{outline:none;border-color:var(--gold);
+    box-shadow:4px 4px 0 var(--line),0 0 0 3px rgba(232,196,100,.25)}
+  .dd-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dd-caret{font-size:9px;color:var(--gold);letter-spacing:1px}
+  .dd-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:50;list-style:none;
+    background:var(--panel);border:3px solid var(--line);box-shadow:6px 6px 0 var(--line);
+    max-height:240px;overflow:auto;padding:4px}
+  .dd-menu li{padding:9px 10px;font-size:13px;font-weight:700;color:var(--cream);
+    cursor:pointer;border:1px solid transparent;border-left:3px solid transparent}
+  .dd-menu li:hover{background:rgba(232,196,100,.12)}
+  .dd-menu li.sel{color:var(--gold);border-left-color:var(--gold)}
+  .dd-menu li:focus-visible{outline:none;border-color:var(--gold);border-left-color:var(--gold)}
+
+  .test{padding:10px 18px;border:3px solid var(--line);background:var(--well);color:var(--cream);
+    font-family:inherit;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:1px;
+    cursor:pointer;box-shadow:4px 4px 0 var(--line)}
+  .test:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--line)}
+  .res{font-size:12px;font-weight:700;margin-top:8px;min-height:16px}
+  .res.ok{color:var(--sage)} .res.err{color:var(--onair)}
+  .save{width:100%;margin-top:12px;padding:15px;border:3px solid var(--line);background:var(--gold);
+    color:var(--cabinet);font-family:inherit;font-weight:900;font-size:15px;text-transform:uppercase;
+    letter-spacing:2px;cursor:pointer;
+    box-shadow:6px 6px 0 var(--line),0 0 28px rgba(240,180,80,.30)}
+  .save:active{transform:translate(6px,6px);box-shadow:0 0 0 var(--line)}
+  .done{margin-top:14px;padding:14px;border:3px solid var(--sage);background:rgba(155,191,148,.12);
+    color:var(--cream);font-weight:700;box-shadow:4px 4px 0 var(--line);display:none}
+  .done code{background:rgba(232,196,100,.15);padding:1px 5px;border:1px solid var(--edge);color:var(--gold)}
+  .hint{font-size:11px;color:var(--soft);margin-top:5px;font-weight:600}
 </style>
 </head>
 <body>
 <form class="card" id="f">
   <div class="hd">
-    <h1>radio-dj · setup</h1>
-    <span class="v">configuration</span>
+    <div class="brand">
+      <h1>radio-dj</h1>
+      <span class="v">setup</span>
+    </div>
+    <div class="dial" aria-hidden="true"></div>
   </div>
   <div class="bd">
 
     <div class="sec">
       <h2>General</h2>
       <div class="grid2">
-        <div><label>Language / Idioma</label>
+        <div><label for="language">Language / Idioma</label>
           <select id="language"><option value="es">Español</option><option value="en">English</option></select></div>
-        <div><label>Station name</label>
+        <div><label for="station_name">Station name</label>
           <input id="station_name" value="radio-dj"></div>
       </div>
-      <label>Location (for time + weather)</label>
+      <label for="location">Location (for time + weather)</label>
       <input id="location" value="La Paz">
     </div>
 
     <div class="sec">
       <h2>Music library</h2>
-      <label>Music folder</label>
+      <label for="library">Music folder</label>
       <input id="library" placeholder="/home/you/Music">
       <div class="hint">Point at your music folder. Leave Navidrome empty to use the folder directly.</div>
-      <label>Navidrome URL (optional)</label>
+      <label for="navidrome_url">Navidrome URL (optional)</label>
       <input id="navidrome_url" placeholder="http://localhost:4533">
       <div class="grid2" style="margin-top:8px">
-        <div><label>Navidrome user</label><input id="navidrome_user"></div>
-        <div><label>Navidrome password</label><input id="navidrome_pass" type="password"></div>
+        <div><label for="navidrome_user">Navidrome user</label><input id="navidrome_user"></div>
+        <div><label for="navidrome_pass">Navidrome password</label><input id="navidrome_pass" type="password"></div>
       </div>
     </div>
 
     <div class="sec">
       <h2>AI provider (BYOK)</h2>
       <div class="grid2">
-        <div><label>Provider</label>
+        <div><label for="llm_provider">Provider</label>
           <select id="llm_provider">
             <option value="glm">GLM (Z.ai)</option>
             <option value="openai">OpenAI</option>
@@ -82,13 +144,13 @@ const onboardingPage = `<!doctype html>
             <option value="groq">Groq</option>
             <option value="custom">Custom</option>
           </select></div>
-        <div><label>Model</label><input id="glm_model" value="glm-4.6"></div>
+        <div><label for="glm_model">Model</label><input id="glm_model" value="glm-4.6"></div>
       </div>
-      <label>API base URL</label>
+      <label for="glm_base_url">API base URL</label>
       <input id="glm_base_url" value="https://api.z.ai/api/coding/paas/v4">
-      <label>API key</label>
+      <label for="glm_api_key">API key</label>
       <input id="glm_api_key" type="password" placeholder="your key">
-      <div class="row" style="margin-top:8px">
+      <div class="row" style="margin-top:10px">
         <div></div>
         <button type="button" class="test" id="t">Test connection</button>
       </div>
@@ -98,13 +160,13 @@ const onboardingPage = `<!doctype html>
     <div class="sec">
       <h2>Voice</h2>
       <div class="grid2">
-        <div><label>TTS provider</label>
+        <div><label for="voice_provider">TTS provider</label>
           <select id="voice_provider">
             <option value="edge-tts">Edge TTS (cloud)</option>
             <option value="piper">Piper (local)</option>
             <option value="say">macOS say (built-in)</option>
           </select></div>
-        <div><label>Voice</label><input id="voice" value="es-CO-SalomeNeural"></div>
+        <div><label for="voice">Voice</label><input id="voice" value="es-CO-SalomeNeural"></div>
       </div>
       <div class="hint" id="vhint">Edge TTS voices: es-CO-SalomeNeural (Colombia), es-MX-DaliaNeural (México), es-ES-ElviraNeural (España)…</div>
     </div>
@@ -114,6 +176,73 @@ const onboardingPage = `<!doctype html>
   </div>
 </form>
 <script>
+/* Accessible custom dropdown — hides the real <select> in place (id kept),
+   builds a button+menu, and two-way syncs: picking an item sets the hidden
+   select.value and fires a real change event so existing bindings still work. */
+function enhanceSelect(sel){
+  var wrap=document.createElement('div'); wrap.className='dd';
+  sel.parentNode.insertBefore(wrap,sel); wrap.appendChild(sel); sel.style.display='none';
+
+  var btn=document.createElement('button'); btn.type='button'; btn.className='dd-btn';
+  btn.setAttribute('aria-haspopup','listbox'); btn.setAttribute('aria-expanded','false');
+  var label=document.createElement('span'); label.className='dd-label';
+  var caret=document.createElement('span'); caret.className='dd-caret'; caret.setAttribute('aria-hidden','true'); caret.textContent='▾';
+  btn.appendChild(label); btn.appendChild(caret);
+
+  var menu=document.createElement('ul'); menu.className='dd-menu'; menu.setAttribute('role','listbox'); menu.hidden=true;
+  var items=[];
+  function rebuild(){
+    menu.innerHTML=''; items=[];
+    for(var i=0;i<sel.options.length;i++){
+      (function(opt,idx){
+        var li=document.createElement('li'); li.setAttribute('role','option'); li.tabIndex=-1;
+        li.dataset.value=opt.value; li.textContent=opt.textContent;
+        if(opt.selected){li.setAttribute('aria-selected','true'); li.classList.add('sel');}
+        li.addEventListener('click',function(){pick(idx);});
+        menu.appendChild(li); items.push(li);
+      })(sel.options[i],i);
+    }
+    label.textContent = sel.selectedIndex>=0 ? sel.options[sel.selectedIndex].textContent : '';
+  }
+  function open(){
+    menu.hidden=false; btn.setAttribute('aria-expanded','true');
+    var i=sel.selectedIndex; if(i<0) i=0;
+    if(items[i]) items[i].focus();
+    document.addEventListener('mousedown',onOutside,true);
+  }
+  function close(){
+    menu.hidden=true; btn.setAttribute('aria-expanded','false');
+    document.removeEventListener('mousedown',onOutside,true);
+  }
+  function pick(idx){
+    sel.selectedIndex=idx;
+    items.forEach(function(li,j){
+      if(j===idx){li.setAttribute('aria-selected','true'); li.classList.add('sel');}
+      else{li.removeAttribute('aria-selected'); li.classList.remove('sel');}
+    });
+    label.textContent = sel.options[idx].textContent;
+    sel.dispatchEvent(new Event('change',{bubbles:true}));
+    close(); btn.focus();
+  }
+  function onOutside(e){ if(!wrap.contains(e.target)) close(); }
+
+  btn.addEventListener('click',function(){ menu.hidden ? open() : close(); });
+  btn.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '||e.key==='ArrowDown'||e.key==='Down'){ e.preventDefault(); open(); }
+  });
+  menu.addEventListener('keydown',function(e){
+    var cur=document.activeElement; var idx=cur?items.indexOf(cur):-1;
+    if(e.key==='ArrowDown'||e.key==='Down'){ e.preventDefault(); items[(idx+1)%items.length].focus(); }
+    else if(e.key==='ArrowUp'||e.key==='Up'){ e.preventDefault(); items[(idx-1+items.length)%items.length].focus(); }
+    else if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(idx>=0) pick(idx); }
+    else if(e.key==='Home'){ e.preventDefault(); items[0].focus(); }
+    else if(e.key==='End'){ e.preventDefault(); items[items.length-1].focus(); }
+    else if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); close(); btn.focus(); }
+  });
+  wrap.appendChild(btn); wrap.appendChild(menu); rebuild();
+}
+document.querySelectorAll('select').forEach(enhanceSelect);
+
 const LLM = {
   glm:       {url:"https://api.z.ai/api/coding/paas/v4", model:"glm-4.6"},
   openai:    {url:"https://api.openai.com/v1",          model:"gpt-4o-mini"},
