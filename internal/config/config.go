@@ -107,8 +107,13 @@ func Load() Config {
 }
 
 // NeedsSetup reports whether the DJ isn't configured yet (first run).
+// Voice counts as configured if either a provider+voice pair OR a raw
+// VoiceCmd is present — the onboarding wizard sets the former.
 func (c Config) NeedsSetup() bool {
-	return c.GLMAPIKey == "" || c.VoiceCmd == ""
+	if c.GLMAPIKey == "" {
+		return true
+	}
+	return c.VoiceProvider == "" && c.VoiceCmd == ""
 }
 
 // loadFile reads the persisted config.json (empty struct if absent).
