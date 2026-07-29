@@ -16,6 +16,7 @@ import (
 
 	"radio-dj/internal/config"
 	"radio-dj/internal/dj"
+	"radio-dj/internal/i18n"
 	"radio-dj/internal/icecast"
 	"radio-dj/internal/library"
 	"radio-dj/internal/skills"
@@ -50,9 +51,13 @@ func Serve(cfg config.Config) error {
 	var vox *voice.Voice
 	var pool *skills.Pool
 	if cfg.DJEnabled {
-		djx = dj.New(cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName)
+		prompts, perr := i18n.Load(cfg.Language)
+		if perr != nil {
+			log.Printf("[radio-dj] WARN i18n: %v", perr)
+		}
+		djx = dj.New(cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName, prompts)
 		vox = voice.New(cfg.VoiceProvider, cfg.Voice, cfg.VoiceCmd)
-		pool = skills.NewPool(cfg.StationName, cfg.LocationName, cfg.Latitude, cfg.Longitude, skills.LoadDir(cfg.StateDir))
+		pool = skills.NewPool(cfg.StationName, cfg.LocationName, cfg.Latitude, cfg.Longitude, skills.LoadDir(cfg.StateDir, cfg.Language))
 		log.Printf("[radio-dj] DJ on: %s @ %s · every %d · bed=%s",
 			cfg.GLMModel, cfg.LocationName, cfg.DJEvery, or(cfg.Bed, "(none)"))
 	} else {

@@ -1,7 +1,10 @@
 // Package dj generates on-air speech via an OpenAI-compatible endpoint
-// (GLM-5.2 on Z.ai). GLM is a thinking model — we disable thinking so the
-// answer lands in `content` instead of burning the budget in reasoning.
+// (GLM-4.6 on Z.ai by default). GLM is a thinking model — we disable thinking
+// so the answer lands in `content` instead of burning the budget in reasoning.
 // Emojis are stripped in code (the model ignores "no emojis" in the prompt).
+//
+// All copy (system persona, banter/weather/request phrasing, weather words)
+// lives in internal/i18n/prompts/{lang}.json — this package only composes it.
 package dj
 
 import (
@@ -12,62 +15,99 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"radio-dj/internal/i18n"
 )
 
 type DJ struct {
 	baseURL, apiKey, model string
 	station, location      string
+	p                      i18n.Prompts
 }
 
-func New(baseURL, apiKey, model, station, location string) *DJ {
-	return &DJ{baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location}
+// New builds a DJ. p is the localized prompt set (see internal/i18n).
+func New(baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
+	return &DJ{baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location, p: p}
 }
 
-// systemPrompt is the DJ's standing persona — ported from subwave's essence:
-// station + on-air location + voice rules. No emojis, no quotes, no markdown,
-// plain read-aloud Spanish (Colombian tuteo).
+// systemPrompt fills the standing persona with station + location.
 func (d *DJ) systemPrompt() string {
 	loc := d.location
 	if loc == "" {
 		loc = "Bolivia"
 	}
-	return fmt.Sprintf(`Sos el DJ al aire de %s, una radio personal transmitiendo desde %s.
-Estilo: cálido, cercano, en español colombiano (tuteo), con humor seco. Sos un
-conductor real, no un asistente: presentás temas, tirás datos, leés el clima,
-agradecés pedidos, hacés que la radio suene viva entre canción y canción.
-
-Reglas estrictas:
-- Escribí SOLO el texto para leer en voz alta. Nada de emojis, comillas,
-  asteriscos, ni markdown. El TTS lo lee literal.
-- 1 a 3 frases cortas. Máximo 40 palabras. Hablás entre canciones, no hacés
-  un monólogo.
-- Conectá con el contexto que te den (artista, álbum, hora, clima, pedido).
-  Si no hay contexto, improvisá algo breve y fresco.`, d.station, loc)
+	return d.p.Sub("system", map[string]string{"station": d.station, "location": loc})
 }
 
-// Say runs a single chat completion with thinking disabled and returns clean
-// spoken text. system=persona, user=the specific ask. Empty on failure.
+// credit builds the " by {artist} (from {album})" tail shared by banter +
+// request acks. Empty when neither is present.
+func (d *DJ) credit(artist, album string) string {
+	switch {
+	case artist != "" && album != "":
+		return d.p.Sub("credit_artist_album", map[string]string{"artist": artist, "album": album})
+	case artist != "":
+		return d.p.Sub("credit_artist", map[string]string{"artist": artist})
+	}
+	return ""
+}
+
+// Say runs a single chat completion (no web search) and returns clean text.
 func (d *DJ) Say(user string) string {
 	return d.complete(user, false)
 }
 
-// Banter is a between-track intro for a song.
-func (d *DJ) Banter(title, artist, album string) string {
-	user := fmt.Sprintf("Presentá en voz alta el tema \"%s\"", title)
-	if artist != "" {
-		user += " de " + artist
-	}
-	if album != "" {
-		user += fmt.Sprintf(" (del álbum %s)", album)
-	}
-	user += ". Una intro corta y fresca."
-	return d.Say(user)
-}
-
 // SaySearch runs a completion WITH web search enabled (GLM's web_search tool),
-// for live facts about the track/artist. Used by the wiki-music skill.
+// for live facts. Used by SayWiki.
 func (d *DJ) SaySearch(user string) string {
 	return d.complete(user, true)
+}
+
+// Banter is a between-track intro for a song.
+func (d *DJ) Banter(title, artist, album string) string {
+	return d.Say(d.p.Sub("banter", map[string]string{
+		"title":  title,
+		"credit": d.credit(artist, album),
+	}))
+}
+
+// SayRequest phrases a listener's request acknowledgment.
+func (d *DJ) SayRequest(title, artist, req string) string {
+	return d.Say(d.p.Sub("request_ack", map[string]string{
+		"req":    req,
+		"title":  title,
+		"credit": d.credit(artist, ""),
+	}))
+}
+
+// SayWiki asks for a real, web-searched fact about the artist/title.
+func (d *DJ) SayWiki(artist, title string) string {
+	return d.SaySearch(d.p.Sub("wiki", map[string]string{"subject": d.wikiSubject(artist, title)}))
+}
+
+// wikiSubject builds the "el artista X o la canción Y" phrase for the wiki ask.
+func (d *DJ) wikiSubject(artist, title string) string {
+	switch {
+	case artist != "" && title != "":
+		return d.p.Sub("wiki_artist_or_title", map[string]string{"artist": artist, "title": title})
+	case artist != "":
+		return d.p.Sub("wiki_artist", map[string]string{"artist": artist})
+	case title != "":
+		return d.p.Sub("wiki_title", map[string]string{"title": title})
+	}
+	return d.p.Get("wiki_any")
+}
+
+// SayWeather phrases a weather reading. cond is a WMO category (clear/clouds/
+// fog/rain/snow/showers/storm/change); ok=false (API failed) → generic fallback.
+func (d *DJ) SayWeather(location, cond string, temp int, ok bool) string {
+	if !ok {
+		return d.Say(d.p.Sub("weather_fallback", map[string]string{"location": location}))
+	}
+	return d.Say(d.p.Sub("weather_ok", map[string]string{
+		"location": location,
+		"temp":     fmt.Sprintf("%d", temp),
+		"desc":     d.p.Get("wmo_" + cond),
+	}))
 }
 
 // complete is the shared chat call. search=true enables web_search (GLM).
@@ -79,7 +119,7 @@ func (d *DJ) complete(user string, search bool) string {
 			{"role": "user", "content": user},
 		},
 		"max_tokens": 160,
-		"thinking": map[string]string{"type": "disabled"},
+		"thinking":   map[string]string{"type": "disabled"},
 	}
 	if search {
 		body["web_search"] = true
