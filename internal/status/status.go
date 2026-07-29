@@ -10,6 +10,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -312,6 +314,15 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		}
 		writeJSON(w, 200, `{"ok":true}`)
 	})
+	// /stream.mp3 reverse-proxies icecast so the player works behind a single
+	// origin (funnel/serve HTTPS) without mixed-content, AND on direct LAN.
+	// FlushInterval=-1 streams the live mp3 without buffering.
+	if upstream, err := url.Parse("http://127.0.0.1:7702"); err == nil { // ponytail: icecast internal port is fixed
+		rp := httputil.NewSingleHostReverseProxy(upstream)
+		rp.FlushInterval = -1
+		mux.Handle("/stream.mp3", rp)
+	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)

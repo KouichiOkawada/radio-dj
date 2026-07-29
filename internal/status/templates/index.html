@@ -235,9 +235,8 @@
 
 <audio id="audio" preload="none"></audio>
 <script>
-  const host = location.hostname;
   const audio = document.getElementById('audio');
-  audio.src = 'http://'+host+':7702/stream.mp3';
+  audio.src = 'stream.mp3'; // relative: proxied at one origin — works behind funnel HTTPS AND direct LAN
   const $ = id => document.getElementById(id);
   const deck = $('deck');
   const playing = on => { deck.classList.toggle('playing', on); $('state').textContent = on ? 'AL AIRE' : 'EN PAUSA'; };
@@ -245,6 +244,20 @@
   $('stop').onclick = ()=>{ audio.pause(); audio.currentTime=0; playing(false); };
   audio.addEventListener('playing', ()=>playing(true));
   audio.addEventListener('pause',  ()=>playing(false));
+
+  // Media Session API — lock-screen artwork + ⏯ (requires secure context = HTTPS)
+  let metaTitle='', metaArtist='';
+  function updateMediaMeta(){
+    if(!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: metaTitle, artist: metaArtist, album: 'RADIO-DJ 88.7',
+      artwork: coverURL ? [{src: coverURL, sizes:'512x512', type:'image/jpeg'}] : []
+    });
+  }
+  if('mediaSession' in navigator){
+    navigator.mediaSession.setActionHandler('play',  ()=> audio.play());
+    navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
+  }
   $('form').addEventListener('submit', async e=>{
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
@@ -261,8 +274,9 @@
     try{
       const j = await fetch('/now-playing').then(r=>r.json());
       const c = j.current||{};
-      $('title').textContent = (c.title||'—').toUpperCase();
-      $('artist').textContent = c.artist||'';
+      metaTitle = c.title||''; metaArtist = c.artist||'';
+      $('title').textContent = (metaTitle||'—').toUpperCase();
+      $('artist').textContent = metaArtist;
       $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
       const rs = j.requests||[];
       if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
@@ -284,6 +298,7 @@
 
       // cover — refetch only when the track changes (server ETag would 304 anyway)
       if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
+      updateMediaMeta();
       tickProgress();
     }catch(_){}
   }
@@ -294,6 +309,7 @@
       coverURL = URL.createObjectURL(b);
       $('cover').style.backgroundImage = 'url('+coverURL+')';
       $('cover').classList.add('has');
+      updateMediaMeta();
     }).catch(()=>{ $('cover').classList.remove('has'); $('cover').style.backgroundImage=''; });
   }
 
