@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -158,8 +159,7 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			_, _ = w.Write([]byte(`{"ok":true,"restart":true}`))
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(onboardingPage))
+		serveOnboarding(w)
 	})
 	mux.HandleFunc("/onboarding/test", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -202,10 +202,13 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(indexPage))
+		serveIndex(w)
 	})
-	go http.ListenAndServe(":"+strconv.Itoa(port), mux)
+	go func() {
+		if err := http.ListenAndServe(":"+strconv.Itoa(port), mux); err != nil {
+			log.Printf("[radio-dj] status server :%d: %v", port, err)
+		}
+	}()
 }
 
 func writeJSON(w http.ResponseWriter, code int, body string) {

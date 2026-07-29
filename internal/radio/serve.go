@@ -128,7 +128,7 @@ func Serve(cfg config.Config) error {
 			if !streamer.Alive() {
 				log.Printf("[radio-dj] master caído — reabriendo source")
 				streamer.Close()
-				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.IcecastSourcePW, cfg.StationName, cfg.Bitrate)
+				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, srcPw, cfg.StationName, cfg.Bitrate)
 				if err != nil {
 					log.Printf("[radio-dj] reopen failed: %v — retry 5s", err)
 					time.Sleep(5 * time.Second)
