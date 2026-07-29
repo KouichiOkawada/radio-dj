@@ -28,10 +28,29 @@ type Icecast struct {
 // EnsureIcecast locates the icecast binary, reuses the existing config under
 // stateDir (stable password across restarts) or writes a fresh one, kills any
 // stray icecast, starts its own, waits for the port, and supervises it.
+// findIcecast locates the icecast binary: first on PATH, then in the usual
+// Homebrew locations (launchd and other minimal-PATH contexts miss /opt/homebrew/bin).
+func findIcecast() (string, error) {
+	if bin, err := exec.LookPath("icecast"); err == nil {
+		return bin, nil
+	}
+	for _, p := range []string{
+		"/opt/homebrew/bin/icecast", // macOS Apple Silicon
+		"/usr/local/bin/icecast",   // macOS Intel / manual install
+		"/opt/homebrew/opt/icecast/bin/icecast",
+		"/usr/bin/icecast", // Linux
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("icecast binary not found — install it (macOS: `brew install icecast`)")
+}
+
 func EnsureIcecast(stateDir, host string, port int) (*Icecast, error) {
-	bin, err := exec.LookPath("icecast")
+	bin, err := findIcecast()
 	if err != nil {
-		return nil, fmt.Errorf("icecast binary not found — install it (macOS: `brew install icecast`)")
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Join(stateDir, "logs"), 0o755); err != nil {
 		return nil, err
