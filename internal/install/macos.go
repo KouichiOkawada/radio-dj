@@ -33,6 +33,7 @@ func Install(bin string) error {
 		if err := copyFile(bin, stable); err != nil {
 			return fmt.Errorf("install binary to %s: %w", stable, err)
 		}
+		codesign(stable) // ad-hoc; macOS hangs a copied go binary until re-signed
 		bin = stable
 		fmt.Printf("✓ binary installed → %s\n", bin)
 	}
@@ -132,6 +133,15 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// codesign ad-hoc re-signs the binary. macOS attaches com.apple.provenance to a
+// go-built binary copied to a new path, and the resulting async validation
+// hangs every invocation (launchd-launched serve may survive, but any
+// user-shell invocation like `radio-dj now` blocks until killed). Re-signing
+// clears it. Best-effort (codesign absent on a stripped macOS → skip).
+func codesign(path string) {
+	_ = exec.Command("codesign", "-s", "-", "--force", path).Run()
 }
 
 // stateDir is the standalone state directory (~/.radio-dj).

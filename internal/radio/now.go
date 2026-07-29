@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,22 @@ func printAccess(cfg config.Config) {
 		fmt.Printf("admin:    http://%s:%d/admin  (admin/%s)\n", host, cfg.IcecastPort, pw)
 	}
 	fmt.Printf("request:  http://%s:%d/request\n", host, cfg.StatusPort)
+	if ip := tailscaleIP(); ip != "" {
+		fmt.Println()
+		fmt.Printf("tailscale (para apps de radio / otros dispositivos):\n")
+		fmt.Printf("  stream:  http://%s:%d%s\n", ip, cfg.IcecastPort, cfg.IcecastMount)
+		fmt.Printf("  request: http://%s:%d/request\n", ip, cfg.StatusPort)
+	}
+}
+
+// tailscaleIP returns the node's Tailscale IPv4 (empty if Tailscale is absent
+// or not running). Surfaced so radio apps on the tailnet get a reachable URL.
+func tailscaleIP() string {
+	out, err := exec.Command("tailscale", "ip", "-4").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // readTag extracts the content of an XML tag from a file (empty if missing).
