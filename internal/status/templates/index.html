@@ -9,6 +9,7 @@
     --bg:#efe6d2; --paper:#f7efdc; --ink:#221c16; --soft:#6b5d4a;
     --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
     --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
+    --hist:#9a7b3e;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -65,6 +66,11 @@
   /* now playing sticker */
   .now{ margin-top:14px; background:var(--paper); border:2px solid #000;
     padding:12px 14px; transform:rotate(-.5deg); }
+  .now-row{ display:flex; gap:12px; align-items:stretch; }
+  .now-text{ flex:1; min-width:0; }
+  .cover{ width:64px; height:64px; flex:0 0 auto; background:#3a2f25 center/cover no-repeat;
+    border:2px solid #000; display:none; }
+  .cover.has{ display:block; }
   .k{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--soft); font-weight:800; }
   .title{ font-size:18px; font-weight:900; text-transform:uppercase; margin-top:4px; display:flex; gap:10px; align-items:center; }
   .eq{ display:inline-flex; gap:3px; height:18px; align-items:flex-end; }
@@ -75,14 +81,23 @@
   @keyframes eq{ to{ height:16px; } }
   .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; }
 
-  /* meta: next + requests */
+  /* progress (elapsed/duration, only when duration is known) */
+  .prog-wrap{ margin-top:10px; }
+  .prog{ height:12px; position:relative; background:#3a2f25; border:2px solid #000; overflow:hidden; }
+  .prog-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background:var(--onair); }
+  .prog-time{ display:flex; justify-content:space-between; margin-top:3px;
+    font-size:9px; font-weight:900; letter-spacing:1px; color:var(--soft); font-family:monospace; }
+
+  /* meta: next + history + requests */
   .meta{ display:grid; gap:12px; }
   .row{ padding:12px 14px; }
   .row .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; }
   .next .lab{ color:var(--sage); }
+  .history .lab{ color:var(--hist); }
   .reqs .lab{ color:var(--rose); }
   .next .v{ font-weight:800; margin-top:4px; }
-  .reqs ul{ margin:6px 0 0 16px; }
+  .history ul, .reqs ul{ margin:6px 0 0 16px; }
+  .history li{ font-weight:700; padding:1px 0; color:var(--soft); }
   .reqs li{ font-weight:700; padding:2px 0; }
 
   /* request */
@@ -108,6 +123,7 @@
   .foot{ display:flex; justify-content:space-between; padding:8px 14px;
     font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft);
     background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
+  .foot .listeners{ color:var(--ink); }
 </style>
 </head>
 <body>
@@ -127,12 +143,21 @@
       </div>
       <div class="teeth"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="now">
-        <div class="k">Ahora suena</div>
-        <div class="title">
-          <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
-          <span id="title">SINTONIZANDO</span>
+        <div class="now-row">
+          <div class="cover" id="cover"></div>
+          <div class="now-text">
+            <div class="k">Ahora suena</div>
+            <div class="title">
+              <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+              <span id="title">SINTONIZANDO</span>
+            </div>
+            <div class="artist" id="artist"></div>
+          </div>
         </div>
-        <div class="artist" id="artist"></div>
+        <div class="prog-wrap" id="prog" style="display:none">
+          <div class="prog"><div class="prog-fill" id="prog-fill"></div></div>
+          <div class="prog-time"><span id="elapsed">0:00</span><span id="dur-total">0:00</span></div>
+        </div>
       </div>
     </div>
 
@@ -140,6 +165,10 @@
       <div class="blk row next">
         <div class="lab">▶ Siguiente</div>
         <div class="v" id="next">—</div>
+      </div>
+      <div class="blk row history" id="history" style="display:none">
+        <div class="lab">✶ Sonó antes</div>
+        <ul id="history-list"></ul>
       </div>
       <div class="blk row reqs" id="reqwrap" style="display:none">
         <div class="lab">✉ Pedidos</div>
@@ -162,6 +191,7 @@
 
     <div class="foot">
       <span>RDJ-0001</span>
+      <span class="listeners" id="listeners" style="display:none">🔊 <b id="listeners-count">0</b> OYENTES</span>
       <span id="state">EN PAUSA</span>
     </div>
   </div>
@@ -184,6 +214,12 @@
     $('q').value='';
     try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); poll(); }catch(_){}
   });
+
+  // progress state — updated by poll(), ticked every second by tickProgress()
+  let startedAt = null, duration = null, coverTitle = null, coverURL = null;
+  const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+
   async function poll(){
     try{
       const j = await fetch('/now-playing').then(r=>r.json());
@@ -192,11 +228,49 @@
       $('artist').textContent = c.artist||'';
       $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
       const rs = j.requests||[];
-      if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+r.text+'</li>').join(''); }
+      if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
       else { $('reqwrap').style.display='none'; }
+
+      // progress inputs
+      startedAt = j.startedAt ? Date.parse(j.startedAt) : null;
+      duration = (typeof c.duration === 'number') ? c.duration : null;
+
+      // listeners (hidden when 0 — nobody connected)
+      const l = (typeof j.listeners === 'number') ? j.listeners : 0;
+      $('listeners').style.display = l>0 ? '' : 'none';
+      $('listeners-count').textContent = l;
+
+      // history (last played, newest first)
+      const h = j.history||[];
+      if(h.length){ $('history').style.display=''; $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join(''); }
+      else { $('history').style.display='none'; }
+
+      // cover — refetch only when the track changes (server ETag would 304 anyway)
+      if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
+      tickProgress();
     }catch(_){}
   }
-  poll(); setInterval(poll, 4000);
+
+  function loadCover(){
+    fetch('/cover').then(r=> r.ok ? r.blob() : Promise.reject()).then(b=>{
+      if(coverURL) URL.revokeObjectURL(coverURL);
+      coverURL = URL.createObjectURL(b);
+      $('cover').style.backgroundImage = 'url('+coverURL+')';
+      $('cover').classList.add('has');
+    }).catch(()=>{ $('cover').classList.remove('has'); $('cover').style.backgroundImage=''; });
+  }
+
+  function tickProgress(){
+    if(!startedAt || !duration){ $('prog').style.display='none'; return; }
+    $('prog').style.display='';
+    const el = (Date.now() - startedAt)/1000;
+    const p = Math.min(1, Math.max(0, el/duration));
+    $('prog-fill').style.width = (p*100)+'%';
+    $('elapsed').textContent = fmt(el);
+    $('dur-total').textContent = fmt(duration);
+  }
+
+  poll(); setInterval(poll, 4000); setInterval(tickProgress, 1000);
 </script>
 </body>
 </html>
