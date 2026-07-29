@@ -66,6 +66,7 @@ func Serve(cfg config.Config) error {
 			return fmt.Errorf("ensure icecast: %w", ierr)
 		}
 		srcPw = ic.SourcePassword()
+		st.SetIcecast(fmt.Sprintf("http://%s:%d", cfg.IcecastHost, cfg.IcecastPort), ic.AdminPassword())
 		log.Printf("[radio-dj] icecast supervisado (source pw %s…)", srcPw[:8])
 	}
 
@@ -209,7 +210,13 @@ func nextTrack(segs []Segment, from int) library.Track {
 }
 
 func toStatus(t library.Track) status.Track {
-	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album}
+	d := 0.0
+	// Duration only for local files — ffprobe on a Navidrome stream URL is a
+	// slow network probe we don't want on every SetCurrent.
+	if t.Src != "" && !strings.Contains(t.Src, "://") {
+		d = library.Duration(t.Src).Seconds()
+	}
+	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album, Duration: d, Src: t.Src}
 }
 
 func or(s, def string) string {

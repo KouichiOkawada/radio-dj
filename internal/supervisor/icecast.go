@@ -22,6 +22,7 @@ type Icecast struct {
 	host       string
 	port       int
 	sourcePw   string
+	adminPw    string
 	cmd        *exec.Cmd
 }
 
@@ -56,22 +57,26 @@ func EnsureIcecast(stateDir, host string, port int) (*Icecast, error) {
 		return nil, err
 	}
 	cfgPath := filepath.Join(stateDir, "icecast.xml")
-	var src string
+	var src, adm string
 	if existing, err := os.ReadFile(cfgPath); err == nil {
-		// reuse the persisted config so the source password is stable
+		// reuse the persisted config so the passwords stay stable across restarts
 		if pw := readSourcePw(string(existing)); pw != "" {
 			src = pw
+		}
+		if pw := readAdminPw(string(existing)); pw != "" {
+			adm = pw
 		}
 	}
 	if src == "" {
 		src = randHex(12)
-		if err := os.WriteFile(cfgPath, []byte(renderConfig(stateDir, host, port, src, randHex(12))), 0o644); err != nil {
+		adm = randHex(12)
+		if err := os.WriteFile(cfgPath, []byte(renderConfig(stateDir, host, port, src, adm)), 0o644); err != nil {
 			return nil, err
 		}
 	}
 	// kill any stray icecast so OUR config (and password) is the one on :port
 	killStrayIcecast()
-	ic := &Icecast{bin: bin, configPath: cfgPath, host: host, port: port, sourcePw: src}
+	ic := &Icecast{bin: bin, configPath: cfgPath, host: host, port: port, sourcePw: src, adminPw: adm}
 	if err := ic.start(); err != nil {
 		return nil, err
 	}
@@ -84,6 +89,9 @@ func EnsureIcecast(stateDir, host string, port int) (*Icecast, error) {
 
 // SourcePassword is the icecast source password radio-dj streams with.
 func (ic *Icecast) SourcePassword() string { return ic.sourcePw }
+
+// AdminPassword is the icecast admin password (for /admin/stats listener counts).
+func (ic *Icecast) AdminPassword() string { return ic.adminPw }
 
 func (ic *Icecast) start() error {
 	cmd := exec.Command(ic.bin, "-c", ic.configPath)
@@ -128,6 +136,21 @@ func readSourcePw(xml string) string {
 	}
 	rest := xml[i+len(tag):]
 	j := indexOf(rest, "</source-password>")
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
+}
+
+// readAdminPw extracts the <admin-password> from an icecast.xml blob.
+func readAdminPw(xml string) string {
+	const tag = "<admin-password>"
+	i := indexOf(xml, tag)
+	if i < 0 {
+		return ""
+	}
+	rest := xml[i+len(tag):]
+	j := indexOf(rest, "</admin-password>")
 	if j < 0 {
 		return ""
 	}
