@@ -1,0 +1,150 @@
+// Package icecast runs ONE persistent ffmpeg "master" encoder connected to
+// Icecast 24/7 with LIVE DUCKING. Two PCM inputs feed one filtergraph:
+//
+//	pipe:3 = music (songs, paced by -re per segment)
+//	pipe:4 = voice (silence when idle, DJ banter on interject)
+//
+//	sidechaincompress ducks the music whenever voice is present, amix overlays
+// the voice on top — so the DJ can talk OVER a song mid-playback without
+// stopping it. Mirrors how a hardware radio mixer's ducking bus works.
+package icecast
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"sync"
+	"time"
+)
+
+// chunkBytes = 100ms of s16le 44100Hz stereo PCM = 44100*2*2*0.1.
+const chunkBytes = 17640
+
+// Streamer holds the persistent master + the two pipe write ends. The voice
+// pipe is owned by a feeder goroutine that paces silence/voice at real-time.
+type Streamer struct {
+	master *exec.Cmd
+	w      *os.File // music PCM (fd 3)
+	vw     *os.File // voice PCM (fd 4)
+	voiceQ chan []byte
+	done   chan struct{}
+	mu     sync.Mutex // guards vw writes
+}
+
+// OpenStreamer starts the master with the ducking filtergraph. Both inputs are
+// live pipes; the caller feeds music via Play and voice via Interject.
+func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate int) (*Streamer, error) {
+	// [0:a]=music, [1:a]=voice. sidechaincompress ducks music on voice; amix
+	// overlays voice. release=600ms = smooth fade back up after the DJ stops.
+	filter := "[0:a][1:a]sidechaincompress=threshold=0.015:ratio=12:attack=5:release=600[d];" +
+		"[d][1:a]amix=inputs=2:duration=first:normalize=0:weights=1 1.3[a]"
+	master := exec.Command("ffmpeg",
+		"-loglevel", "warning",
+		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:3",
+		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:4",
+		"-filter_complex", filter,
+		"-map", "[a]",
+		"-c:a", "libmp3lame", "-b:a", strconv.Itoa(bitrate)+"k", "-ar", "44100", "-ac", "2",
+		"-content_type", "audio/mpeg", "-f", "mp3", "-ice_name", name,
+		fmt.Sprintf("icecast://source:%s@%s:%d%s", sourcePw, host, port, mount),
+	)
+	mr, mw, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("music pipe: %w", err)
+	}
+	vr, vw, err := os.Pipe()
+	if err != nil {
+		mr.Close(); mw.Close()
+		return nil, fmt.Errorf("voice pipe: %w", err)
+	}
+	master.ExtraFiles = []*os.File{mr, vr} // → fd 3 (music), fd 4 (voice)
+	master.Stderr = os.Stderr
+	if err := master.Start(); err != nil {
+		mr.Close(); mw.Close(); vr.Close(); vw.Close()
+		return nil, fmt.Errorf("master ffmpeg: %w", err)
+	}
+	s := &Streamer{
+		master: master, w: mw, vw: vw,
+		voiceQ: make(chan []byte, 8),
+		done:   make(chan struct{}),
+	}
+	go s.voiceFeeder()
+	return s, nil
+}
+
+// voiceFeeder owns the voice pipe. Each 100ms tick it writes 100ms of audio:
+// voice frames if any are queued, otherwise silence (zeros). Pacing at
+// real-time keeps the filtergraph synced with the -re-paced music input.
+func (s *Streamer) voiceFeeder() {
+	silence := make([]byte, chunkBytes)
+	var voice []byte
+	t := time.NewTicker(100 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.done:
+			return
+		case v := <-s.voiceQ:
+			voice = append(voice, v...)
+		case <-t.C:
+			s.mu.Lock()
+			switch {
+			case len(voice) >= chunkBytes:
+				_, _ = s.vw.Write(voice[:chunkBytes])
+				voice = voice[chunkBytes:]
+			case len(voice) > 0:
+				_, _ = s.vw.Write(voice)
+				voice = nil
+			default:
+				_, _ = s.vw.Write(silence)
+			}
+			s.mu.Unlock()
+		}
+	}
+}
+
+// Play decodes one music segment to PCM (paced by -re) and writes it to the
+// music pipe. Music-only now — ducking is live via the voice input.
+func (s *Streamer) Play(segment string) error {
+	dec := exec.Command("ffmpeg",
+		"-loglevel", "error", "-re", "-i", segment,
+		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1")
+	dec.Stdout = s.w
+	dec.Stderr = os.Stderr
+	return dec.Run()
+}
+
+// Interject decodes a voice file to PCM and queues it to the feeder — the
+// master ducks the music and overlays the voice in real-time. Non-blocking:
+// returns once queued. Safe to call while a song is playing.
+func (s *Streamer) Interject(voiceFile string) error {
+	pcm, err := exec.Command("ffmpeg",
+		"-loglevel", "error", "-i", voiceFile,
+		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1").Output()
+	if err != nil {
+		return fmt.Errorf("voice decode: %w", err)
+	}
+	if len(pcm) == 0 {
+		return fmt.Errorf("voice decode produced no PCM")
+	}
+	select {
+	case s.voiceQ <- pcm:
+		return nil
+	default:
+		return fmt.Errorf("voice queue full — interject skipped")
+	}
+}
+
+// Alive reports whether the master is still running.
+func (s *Streamer) Alive() bool {
+	return s.master.ProcessState == nil
+}
+
+// Close shuts the master + feeder down cleanly.
+func (s *Streamer) Close() {
+	close(s.done)
+	_ = s.w.Close()
+	_ = s.vw.Close()
+	_ = s.master.Wait()
+}
