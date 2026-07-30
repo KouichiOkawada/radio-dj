@@ -189,6 +189,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	}
 
 	matched := 0
+	var reqCtx []dj.Req
 	for _, req := range st.DrainRequests() {
 		ms, _ := lib.Search(req.Text)
 		if len(ms) > 0 {
@@ -197,6 +198,8 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 				addVoice(skills.RequestAck(djx, t, req.Text))
 			}
 			addTrack(t)
+			lib.MarkPlayed(t.Src)
+			reqCtx = append(reqCtx, dj.Req{Query: req.Text, Title: t.Title, Artist: t.Artist})
 			matched++
 			log.Printf("[request] %q → %s — %s", req.Text, t.Title, t.Artist)
 		} else {
@@ -204,25 +207,57 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		}
 	}
 
-	for i := 0; i < cfg.Chunk; i++ {
-		t, e := lib.Next()
-		if e != nil {
-			break
-		}
-		if cfg.DJEnabled && *trackCount%cfg.DJEvery == 0 {
-			if (*trackCount/cfg.DJEvery)%2 == 0 {
-				addVoice(skills.Intro(djx, t))
+	// DJ Director: one structured GLM call plans the whole setlist + talk breaks.
+	// The LLM picks+orders a coherent arc from a shortlist and decides WHEN to
+	// talk (intro/trivia/wiki/history/time/none), modulated by cfg.DJTalk.
+	// On any failure → random fallback so the station never stops.
+	if cfg.DJEnabled && djx != nil {
+		cands := lib.Sample(12)
+		if len(cands) > 0 {
+			ctx := dj.Ctx{
+				Talk:       cfg.DJTalk,
+				TimeOfDay:  timeOfDay(time.Now()),
+				History:    histCands(st.Current().History),
+				Candidates: libCands(cands),
+				Requests:   reqCtx,
+			}
+			if plan, perr := djx.DirectPlan(ctx); perr == nil {
+				bm := map[int]dj.Break{}
+				for _, b := range plan.Breaks {
+					bm[b.Before] = b
+				}
+				for pos, id := range plan.Setlist {
+					b := bm[pos]
+					switch {
+					case b.Kind == "time":
+						segs = append(segs, Segment{IsVoice: true, LiveTime: true}) // clock deferred to air-time
+					case b.Kind != "none" && strings.TrimSpace(b.Text) != "":
+						addVoice(b.Text)
+					}
+					addTrack(cands[id])
+					*trackCount++
+				}
+				// commit only the chosen tracks; the rest stay available next tanda
+				for _, id := range plan.Setlist {
+					lib.MarkPlayed(cands[id].Src)
+				}
 			} else {
-				text, isTime := pool.Segue(djx, t)
-				if isTime {
-					segs = append(segs, Segment{IsVoice: true, LiveTime: true}) // defer the clock to air-time
-				} else {
-					addVoice(text)
+				log.Printf("[dj] director falló (%v) — random fallback", perr)
+				for i := 0; i < cfg.Chunk; i++ {
+					if t, e := lib.Next(); e == nil {
+						addTrack(t)
+						*trackCount++
+					}
 				}
 			}
 		}
-		addTrack(t)
-		*trackCount++
+	} else {
+		for i := 0; i < cfg.Chunk; i++ {
+			if t, e := lib.Next(); e == nil {
+				addTrack(t)
+				*trackCount++
+			}
+		}
 	}
 
 	if len(segs) == 0 {
@@ -258,4 +293,37 @@ func or(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// libCands / histCands map library + status tracks into the director's Cand
+// shape (the director only knows its own types — dj is decoupled from
+// library/status to avoid import cycles).
+func libCands(ts []library.Track) []dj.Cand {
+	out := make([]dj.Cand, len(ts))
+	for i, t := range ts {
+		out[i] = dj.Cand{ID: i, Title: t.Title, Artist: t.Artist, Album: t.Album}
+	}
+	return out
+}
+
+func histCands(ts []status.Track) []dj.Cand {
+	out := make([]dj.Cand, len(ts))
+	for i, t := range ts {
+		out[i] = dj.Cand{Title: t.Title, Artist: t.Artist, Album: t.Album}
+	}
+	return out
+}
+
+// timeOfDay returns a coarse ES time-of-day tag for the director's context.
+func timeOfDay(t time.Time) string {
+	switch h := t.Hour(); {
+	case h < 6:
+		return "madrugada"
+	case h < 12:
+		return "mañana"
+	case h < 19:
+		return "tarde"
+	default:
+		return "noche"
+	}
 }

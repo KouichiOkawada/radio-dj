@@ -29,6 +29,11 @@ type Track struct {
 
 type Library interface {
 	Next() (Track, error)
+	// Sample returns up to n not-yet-played tracks WITHOUT committing them.
+	// Used to offer the LLM director a shortlist; MarkPlayed commits the chosen.
+	Sample(n int) []Track
+	// MarkPlayed commits a track (by Src) as played.
+	MarkPlayed(src string)
 	// Search returns tracks whose title/artist/album contains q (case-insensitive).
 	Search(q string) ([]Track, error)
 }
@@ -100,6 +105,35 @@ func (f *folder) Next() (Track, error) {
 	return f.Next()
 }
 
+// Sample peeks up to n unplayed tracks without committing them. The director
+// picks a subset; the caller MarkPlayed only those. Scans the shuffled order
+// and resets+reshuffles once every track has played.
+func (f *folder) Sample(n int) []Track {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.played) >= len(f.files) {
+		f.played = map[string]bool{}
+		rand.Shuffle(len(f.files), func(i, j int) { f.files[i], f.files[j] = f.files[j], f.files[i] })
+	}
+	var out []Track
+	for _, p := range f.files {
+		if f.played[p] {
+			continue
+		}
+		out = append(out, Track{Src: p, Title: stripExt(filepath.Base(p)), Artist: parentDir(p, f.root)})
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
+}
+
+func (f *folder) MarkPlayed(src string) {
+	f.mu.Lock()
+	f.played[src] = true
+	f.mu.Unlock()
+}
+
 func (f *folder) Search(q string) ([]Track, error) {
 	q = strings.ToLower(q)
 	if q == "" {
@@ -135,6 +169,29 @@ func (n *navidrome) Next() (Track, error) {
 	n.queue = n.queue[1:]
 	return t, nil
 }
+
+// Sample drains the random-song queue up to n tracks without a separate commit
+// step — Navidrome has no global played-set, so sampling consumes the queue.
+func (n *navidrome) Sample(nn int) []Track {
+	var out []Track
+	for len(out) < nn {
+		if len(n.queue) == 0 {
+			if err := n.refill(); err != nil {
+				break
+			}
+		}
+		take := nn - len(out)
+		if take > len(n.queue) {
+			take = len(n.queue)
+		}
+		out = append(out, n.queue[:take]...)
+		n.queue = n.queue[take:]
+	}
+	return out
+}
+
+// MarkPlayed is a no-op for Navidrome (no persistent played-set).
+func (n *navidrome) MarkPlayed(src string) {}
 
 func (n *navidrome) Search(q string) ([]Track, error) {
 	v := url.Values{}

@@ -25,6 +25,43 @@ type DJ struct {
 	p                      i18n.Prompts
 }
 
+// Director plan types — the structured in/out of the one-call-per-tanda DJ
+// planner (DirectPlan). The LLM receives a Ctx and returns a Plan.
+type (
+	// Cand is one candidate/history track handed to the director.
+	Cand struct {
+		ID     int    `json:"id"`
+		Title  string `json:"title"`
+		Artist string `json:"artist"`
+		Album  string `json:"album,omitempty"`
+	}
+	// Req is a listener request (with its match, if any) for the director.
+	Req struct {
+		Query  string `json:"query"`
+		Title  string `json:"title,omitempty"`
+		Artist string `json:"artist,omitempty"`
+	}
+	// Ctx is the full structured context the director reasons over.
+	Ctx struct {
+		Talk       string `json:"talk"`
+		TimeOfDay  string `json:"time_of_day,omitempty"`
+		History    []Cand `json:"history"`
+		Candidates []Cand `json:"candidates"`
+		Requests   []Req  `json:"requests,omitempty"`
+	}
+	// Break is the talk the director schedules before a setlist position.
+	Break struct {
+		Before int    `json:"before"`           // index into setlist
+		Kind   string `json:"kind"`             // intro|trivia|wiki|history|station|time|none
+		Text   string `json:"text,omitempty"`   // spoken copy (empty for time/none)
+	}
+	// Plan is the director's output: an ordered setlist + talk breaks.
+	Plan struct {
+		Setlist []int   `json:"setlist"`
+		Breaks  []Break `json:"breaks"`
+	}
+)
+
 // New builds a DJ. p is the localized prompt set (see internal/i18n).
 func New(baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
 	return &DJ{baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location, p: p}
@@ -151,6 +188,102 @@ func (d *DJ) complete(user string, search bool) string {
 		return ""
 	}
 	return stripEmoji(strings.TrimSpace(doc.Choices[0].Message.Content))
+}
+
+// completeJSON is complete() with response_format=json_object, used by the
+// director planner (the plan is longer than a spoken one-liner). Returns the
+// raw model content; the caller parses the JSON.
+func (d *DJ) completeJSON(system, user string) string {
+	body := map[string]any{
+		"model": d.model,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+		"max_tokens":      1200,
+		"thinking":        map[string]string{"type": "disabled"},
+		"response_format": map[string]string{"type": "json_object"},
+	}
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequest("POST", strings.TrimRight(d.baseURL, "/")+"/chat/completions", bytes.NewReader(raw))
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	r, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return ""
+	}
+	var doc struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(r, &doc) != nil || len(doc.Choices) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(doc.Choices[0].Message.Content)
+}
+
+// DirectPlan asks the LLM to plan one tanda: pick+order a coherent setlist
+// from candidates and decide where (and whether) to talk, modulated by the
+// talkiness dial in ctx.Talk. Returns a validated Plan; on any error the
+// caller falls back to random selection so the station never stops.
+func (d *DJ) DirectPlan(ctx Ctx) (Plan, error) {
+	loc := d.location
+	if loc == "" {
+		loc = "Bolivia"
+	}
+	system := d.p.Sub("director", map[string]string{"station": d.station, "location": loc, "talk": ctx.Talk})
+	user, _ := json.Marshal(ctx)
+	raw := d.completeJSON(system, string(user))
+	if raw == "" {
+		return Plan{}, fmt.Errorf("respuesta vacía del modelo")
+	}
+	raw = extractJSON(raw)
+	var plan Plan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		return Plan{}, fmt.Errorf("parse del plan: %w", err)
+	}
+	if len(plan.Setlist) == 0 || len(ctx.Candidates) == 0 {
+		return Plan{}, fmt.Errorf("setlist vacío")
+	}
+	for _, id := range plan.Setlist {
+		if id < 0 || id >= len(ctx.Candidates) {
+			return Plan{}, fmt.Errorf("setlist id %d fuera de rango (0..%d)", id, len(ctx.Candidates)-1)
+		}
+	}
+	return plan, nil
+}
+
+// extractJSON returns the first balanced {...} block in s — a safety net for
+// models that wrap JSON in prose or code fences despite json_object mode.
+func extractJSON(s string) string {
+	i := strings.IndexByte(s, '{')
+	if i < 0 {
+		return s
+	}
+	depth := 0
+	for j := i; j < len(s); j++ {
+		switch s[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[i : j+1]
+			}
+		}
+	}
+	return s[i:]
 }
 
 // stripEmoji removes emoji + misc symbols the TTS would read aloud or garble.

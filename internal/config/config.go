@@ -25,8 +25,9 @@ type Config struct {
 	Bitrate         int
 	Chunk           int
 
-	DJEnabled  bool
-	DJEvery    int
+	DJEnabled bool
+	DJEvery   int // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
+	DJTalk    string // poco | regular | mucho | verboso — how chatty the director is
 	GLMBaseURL string
 	GLMAPIKey  string
 	GLMModel   string
@@ -64,6 +65,7 @@ type fileConfig struct {
 	Longitude     float64 `json:"lon,omitempty"`
 	Language      string  `json:"language,omitempty"`
 	DJEvery       int     `json:"dj_every,omitempty"`
+	DJTalk        string  `json:"dj_talk,omitempty"`
 	Chunk         int     `json:"chunk,omitempty"`
 	Bitrate       int     `json:"bitrate,omitempty"`
 	StationName   string  `json:"station_name,omitempty"`
@@ -87,6 +89,7 @@ func Load() Config {
 		Bitrate:         pickInt("RDJ_BITRATE", f.Bitrate, 192),
 		Chunk:           pickInt("RDJ_CHUNK", f.Chunk, 8),
 		DJEvery:         pickInt("RDJ_DJ_EVERY", f.DJEvery, 3),
+		DJTalk:          pick("RDJ_DJ_TALK", f.DJTalk, "regular"),
 		GLMBaseURL:      pick("RDJ_GLM_BASE_URL", f.GLMBaseURL, "https://api.z.ai/api/coding/paas/v4"),
 		GLMAPIKey:       firstNonEmpty(os.Getenv("RDJ_GLM_API_KEY"), f.GLMAPIKey, os.Getenv("ZAI_API_KEY")),
 		GLMModel:        pick("RDJ_GLM_MODEL", f.GLMModel, "glm-5.2"),
