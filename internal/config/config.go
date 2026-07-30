@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -72,6 +73,22 @@ type fileConfig struct {
 	Bed           string  `json:"bed,omitempty"`
 }
 
+// normalizeTalk canonicalizes the talkiness dial to English keys, accepting
+// the Spanish aliases for back-comat (early configs used "verboso"). Unknown
+// or empty → "regular". The director prompt describes these four keys.
+func normalizeTalk(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "poco", "low", "bajo", "baja":
+		return "low"
+	case "mucho", "high", "alto", "alta":
+		return "high"
+	case "verboso", "verbose":
+		return "verbose"
+	default: // "", "regular", "medio", "normal", typos
+		return "regular"
+	}
+}
+
 func Load() Config {
 	dir := defaultStateDir()
 	f := loadFile(dir)
@@ -89,7 +106,7 @@ func Load() Config {
 		Bitrate:         pickInt("RDJ_BITRATE", f.Bitrate, 192),
 		Chunk:           pickInt("RDJ_CHUNK", f.Chunk, 8),
 		DJEvery:         pickInt("RDJ_DJ_EVERY", f.DJEvery, 3),
-		DJTalk:          pick("RDJ_DJ_TALK", f.DJTalk, "regular"),
+		DJTalk:          normalizeTalk(pick("RDJ_DJ_TALK", f.DJTalk, "regular")),
 		GLMBaseURL:      pick("RDJ_GLM_BASE_URL", f.GLMBaseURL, "https://api.z.ai/api/coding/paas/v4"),
 		GLMAPIKey:       firstNonEmpty(os.Getenv("RDJ_GLM_API_KEY"), f.GLMAPIKey, os.Getenv("ZAI_API_KEY")),
 		GLMModel:        pick("RDJ_GLM_MODEL", f.GLMModel, "glm-5.2"),

@@ -9,6 +9,8 @@ package radio
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,6 +33,25 @@ type Segment struct {
 	Meta     library.Track // valid when !IsVoice
 }
 
+// djLogPath is set in Serve(); logDJ appends DJ speech, requests and the
+// spoken clock to it so /dj-log can surface what aired (the feedback view).
+var djLogPath string
+
+func logDJ(kind, text string) {
+	if djLogPath == "" {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	line := time.Now().Format("15:04:05") + " [" + kind + "] " + text + "\n"
+	if f, err := os.OpenFile(djLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		_, _ = f.WriteString(line)
+		_ = f.Close()
+	}
+}
+
 // Serve runs the station until fatally errored. The streamer is opened once
 // and kept alive across the whole loop.
 func Serve(cfg config.Config) error {
@@ -39,6 +60,7 @@ func Serve(cfg config.Config) error {
 		return fmt.Errorf("library: %w", err)
 	}
 	st := status.New(cfg.StateDir, cfg.NeedsSetup())
+	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
 	log.Printf("[radio-dj] UI :%d · stream :%d/stream.mp3 · POST /request", cfg.StatusPort, cfg.IcecastPort)
 
@@ -120,6 +142,7 @@ func Serve(cfg config.Config) error {
 				pendingLiveTime = false
 				go func() {
 					text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
+					logDJ("HORA", text)
 					vf, verr := vox.Speak(text)
 					if verr != nil {
 						log.Printf("[dj] time voice: %v", verr)
@@ -156,6 +179,7 @@ func Serve(cfg config.Config) error {
 		if pendingLiveTime {
 			go func() {
 				text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
+				logDJ("HORA", text)
 				if vf, verr := vox.Speak(text); verr == nil {
 					_ = streamer.Interject(vf)
 				}
@@ -180,6 +204,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		if vf, verr := vox.Speak(text); verr == nil {
 			segs = append(segs, Segment{Path: vf, IsVoice: true})
 			log.Printf("[dj] %s", text)
+			logDJ("DJ", text)
 		} else {
 			log.Printf("[dj] voice: %v", verr)
 		}
@@ -202,6 +227,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			reqCtx = append(reqCtx, dj.Req{Query: req.Text, Title: t.Title, Artist: t.Artist})
 			matched++
 			log.Printf("[request] %q → %s — %s", req.Text, t.Title, t.Artist)
+			logDJ("PEDIDO", fmt.Sprintf("%q → %s — %s", req.Text, t.Title, t.Artist))
 		} else {
 			log.Printf("[request] no match %q", req.Text)
 		}

@@ -294,6 +294,21 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			}
 		}
 	})
+	// /dj-log — tail of the DJ speech + request log (the radio loop writes it
+	// to dj-log.txt). Plain text, last 400 lines; the client shows newest-first.
+	mux.HandleFunc("/dj-log", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		data, err := os.ReadFile(filepath.Join(s.dir, "dj-log.txt"))
+		if err != nil {
+			return // no log yet → empty body
+		}
+		lines := strings.Split(string(data), "\n")
+		if len(lines) > 400 {
+			lines = lines[len(lines)-400:]
+		}
+		_, _ = io.WriteString(w, strings.Join(lines, "\n"))
+	})
 	mux.HandleFunc("/cover", s.handleCover)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

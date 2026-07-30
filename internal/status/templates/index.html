@@ -22,17 +22,14 @@
   body{ background:var(--bg); color:var(--ink);
     font-family:"Helvetica Neue",Arial,sans-serif;
     display:flex; flex-direction:column; align-items:center;
-    /* safe-area aware: foldable/curved edges + notches */
     padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right))
            max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
     background-image:linear-gradient(var(--bg),var(--bg)),
       repeating-linear-gradient(0deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px),
       repeating-linear-gradient(90deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px);
   }
-  /* margin:auto centers + stays scrollable when content exceeds viewport (no top-clip) */
   .stack{ width:100%; max-width:540px; margin:auto; display:grid; gap:14px; }
 
-  /* brutalist block primitive: thick border + hard offset shadow */
   .blk{ background:var(--paper); border:3px solid var(--line);
     box-shadow:6px 6px 0 var(--line); }
 
@@ -50,7 +47,7 @@
   .playing .led{ border-color:#fff; }
 
   /* cassette */
-  .cass{ background:var(--shell); padding:18px 18px 14px; }
+  .cass{ background:var(--shell); padding:18px 18px 16px; }
   .window{ display:flex; align-items:center; gap:0; }
   .rw{ width:88px; height:88px; border-radius:50%; background:var(--window);
     border:3px solid #3a2f25; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
@@ -90,24 +87,53 @@
   @keyframes eq{ to{ height:16px; } }
   .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; }
 
-  /* progress (elapsed/duration, only when duration is known) */
   .prog-wrap{ margin-top:10px; }
   .prog{ height:12px; position:relative; background:#3a2f25; border:2px solid #000; overflow:hidden; }
   .prog-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background:var(--onair); }
   .prog-time{ display:flex; justify-content:space-between; margin-top:3px;
     font-size:9px; font-weight:900; letter-spacing:1px; color:var(--soft); font-family:monospace; }
 
-  /* meta: next + history + requests */
+  /* transport — physical deck keys living INSIDE the cassette */
+  .transport{ display:flex; gap:12px; margin-top:14px; }
+  .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer;
+    font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px;
+    color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
+  .transport button:active{ transform:translateY(2px); }
+  .t-play{ background:var(--sage); }
+  .t-play.connecting{ background:#c9bda8; animation:pulse 1s steps(2) infinite; }
+  .t-play.on{ opacity:.55; }            /* already playing — dim the cue */
+  @keyframes pulse{ 50%{ background:#b3a489; } }
+  .dots{ display:inline-flex; gap:2px; }
+  .dots i{ width:5px; height:5px; background:var(--ink); border-radius:50%; animation:bounce .6s steps(2) infinite alternate; }
+  .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+  @keyframes bounce{ to{ opacity:.3; } }
+  .t-stop{ background:var(--paper); color:var(--onair); }
+  .t-stop.dim{ opacity:.35; }           /* nothing to stop */
+
+  /* meta: next + collapsible history + collapsible dj-log + requests */
   .meta{ display:grid; gap:12px; }
-  .row{ padding:12px 14px; }
+  .row{ padding:0; overflow:hidden; }
+  .row .head{ display:flex; justify-content:space-between; align-items:center;
+    padding:12px 14px; cursor:pointer; user-select:none; }
   .row .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; }
   .next .lab{ color:var(--sage); }
   .history .lab{ color:var(--hist); }
+  .djlog .lab{ color:#7a6437; }
   .reqs .lab{ color:var(--rose); }
-  .next .v{ font-weight:800; margin-top:4px; }
-  .history ul, .reqs ul{ margin:6px 0 0 16px; }
-  .history li{ font-weight:700; padding:1px 0; color:var(--soft); }
-  .reqs li{ font-weight:700; padding:2px 0; }
+  .chev{ font-size:12px; color:var(--soft); transition:transform .2s; }
+  .collapsible.collapsed .chev{ transform:rotate(-90deg); }
+  .body{ padding:0 14px 12px; }
+  .collapsible.collapsed .body{ display:none; }
+  .next .v{ font-weight:800; }
+  .history ul{ margin:0; list-style:none; }
+  .history li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
+  .history li:first-child{ border-top:none; }
+  .reqs ul{ margin:0; list-style:none; }
+  .reqs li{ font-weight:700; padding:3px 0; }
+  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:monospace; font-size:11px;
+    line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
+  .djlog pre b{ color:#7a6437; }
+  .djlog .empty{ font-size:11px; color:var(--soft); padding:2px 0; }
 
   /* request */
   .ask{ padding:14px; }
@@ -120,25 +146,14 @@
   .ask button:active{ transform:translate(2px,2px); box-shadow:none; }
   .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
 
-  /* transport */
-  .ctrl{ display:flex; gap:14px; }
-  .ctrl button{ flex:1; padding:16px; border:3px solid var(--line); cursor:pointer;
-    font-family:inherit; font-size:15px; font-weight:900; text-transform:uppercase; letter-spacing:2px; }
-  .play{ background:var(--sage); color:var(--ink); box-shadow:6px 6px 0 var(--line); }
-  .play:active{ transform:translate(6px,6px); box-shadow:none; }
-  .stop{ background:var(--paper); color:var(--onair); box-shadow:6px 6px 0 var(--line); }
-  .stop:active{ transform:translate(6px,6px); box-shadow:none; }
-
   .foot{ display:flex; justify-content:space-between; gap:8px; padding:8px 14px;
     font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft);
     background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
   .title{ overflow-wrap:anywhere; }
 
-  /* responsive: foldable cover screen + small phones */
   @media (max-width:480px){
     .stack{ gap:11px; }
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
-    .play,.stop{ box-shadow:4px 4px 0 var(--line); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
     .cass{ padding:14px 14px 12px; }
@@ -156,10 +171,7 @@
     .title{ font-size:15px; gap:8px; }
     .stack{ gap:9px; }
   }
-  /* short/landscape: pin to top instead of centering so header is always reachable */
-  @media (max-height:680px){
-    .stack{ margin:0 auto; }
-  }
+  @media (max-height:680px){ .stack{ margin:0 auto; } }
   .foot .listeners{ color:var(--ink); }
 </style>
 </head>
@@ -196,20 +208,30 @@
           <div class="prog-time"><span id="elapsed">0:00</span><span id="dur-total">0:00</span></div>
         </div>
       </div>
+
+      <!-- transport keys, integrated into the deck -->
+      <div class="transport">
+        <button class="t-play" id="play"><span id="play-ico">▶</span> <span id="play-txt">PLAY</span></button>
+        <button class="t-stop dim" id="stop">■ STOP</button>
+      </div>
     </div>
 
     <div class="meta">
       <div class="blk row next">
-        <div class="lab">▶ Siguiente</div>
-        <div class="v" id="next">—</div>
+        <div class="head"><span class="lab">▶ Siguiente</span></div>
+        <div class="body"><div class="v" id="next">—</div></div>
       </div>
-      <div class="blk row history" id="history" style="display:none">
-        <div class="lab">✶ Sonó antes</div>
-        <ul id="history-list"></ul>
+      <div class="blk row history collapsible" id="history" style="display:none">
+        <div class="head"><span class="lab">✶ Sonó antes</span><span class="chev">▾</span></div>
+        <div class="body"><ul id="history-list"></ul></div>
+      </div>
+      <div class="blk row djlog collapsible collapsed" id="djlog">
+        <div class="head"><span class="lab">🎙 Locutor</span><span class="chev">▾</span></div>
+        <div class="body"><pre id="djlog-body"></pre></div>
       </div>
       <div class="blk row reqs" id="reqwrap" style="display:none">
-        <div class="lab">✉ Pedidos</div>
-        <ul id="reqlist"></ul>
+        <div class="head"><span class="lab">✉ Pedidos</span></div>
+        <div class="body"><ul id="reqlist"></ul></div>
       </div>
     </div>
 
@@ -219,11 +241,6 @@
         <button type="submit">Pedir</button>
       </form>
       <div class="h">Tu pedido entra en la próxima tanda</div>
-    </div>
-
-    <div class="ctrl">
-      <button class="play" id="play">▶ Play</button>
-      <button class="stop" id="stop">■ Stop</button>
     </div>
 
     <div class="foot">
@@ -236,16 +253,46 @@
 <audio id="audio" preload="none"></audio>
 <script>
   const audio = document.getElementById('audio');
-  audio.src = 'stream.mp3'; // relative: proxied at one origin — works behind funnel HTTPS AND direct LAN
+  audio.src = 'stream.mp3';
   const $ = id => document.getElementById(id);
   const deck = $('deck');
-  const playing = on => { deck.classList.toggle('playing', on); $('state').textContent = on ? 'AL AIRE' : 'EN PAUSA'; };
-  $('play').onclick = ()=> audio.play();
-  $('stop').onclick = ()=>{ audio.pause(); audio.currentTime=0; playing(false); };
-  audio.addEventListener('playing', ()=>playing(true));
-  audio.addEventListener('pause',  ()=>playing(false));
 
-  // Media Session API — lock-screen artwork + ⏯ (requires secure context = HTTPS)
+  // ---- transport: 3-state machine so the button reacts INSTANTLY to the tap,
+  //      not seconds later when the buffer finally plays. -------
+  // idle → (tap play) → connecting → (audio 'playing') → playing → (tap stop) → idle
+  let audioState = 'idle';
+  function setAudioState(s){
+    audioState = s;
+    const play = $('play'), stop = $('stop');
+    if(s === 'playing'){
+      $('play-ico').textContent = '▶'; $('play-txt').textContent = 'SONANDO';
+      play.classList.add('on'); play.classList.remove('connecting');
+      stop.classList.remove('dim');
+      deck.classList.add('playing'); $('state').textContent = 'AL AIRE';
+    } else if(s === 'connecting'){
+      $('play-ico').innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+      $('play-txt').textContent = 'CONECTANDO';
+      play.classList.add('connecting'); play.classList.remove('on');
+      stop.classList.add('dim');
+      deck.classList.remove('playing'); $('state').textContent = 'CONECTANDO…';
+    } else { // idle
+      $('play-ico').textContent = '▶'; $('play-txt').textContent = 'PLAY';
+      play.classList.remove('on','connecting');
+      stop.classList.add('dim');
+      deck.classList.remove('playing'); $('state').textContent = 'EN PAUSA';
+    }
+  }
+  $('play').onclick = ()=>{
+    if(audioState === 'idle'){
+      setAudioState('connecting');                 // instant feedback — don't wait for the buffer
+      audio.play().catch(()=> setAudioState('idle'));
+    }
+  };
+  $('stop').onclick = ()=>{ audio.pause(); audio.currentTime = 0; setAudioState('idle'); };
+  audio.addEventListener('playing', ()=> setAudioState('playing'));
+  audio.addEventListener('pause',   ()=> setAudioState('idle'));
+
+  // Media Session API — lock-screen artwork + ⏯
   let metaTitle='', metaArtist='';
   function updateMediaMeta(){
     if(!('mediaSession' in navigator)) return;
@@ -259,29 +306,34 @@
     navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
   }
 
-  // live-stream resilience — on lid-close the Wi-Fi re-associates (1-3s blip),
-  // the long-lived TCP dies, and <audio> won't resume on its own. Reconnect.
+  // live-stream resilience
   let reconnectTimer = null;
   function reconnectStream(){
     if(reconnectTimer) return;
+    setAudioState('idle');
     $('state').textContent = 'RECONECTANDO…';
-    deck.classList.remove('playing');
     reconnectTimer = setTimeout(()=>{
       reconnectTimer = null;
-      audio.src = 'stream.mp3?t=' + Date.now(); // cache-bust → fuerza socket nuevo
-      audio.play().catch(()=>{}); // si vuelve a fallar, 'error' reagenda otro reintento
+      audio.src = 'stream.mp3?t=' + Date.now();
+      setAudioState('connecting');
+      audio.play().catch(()=>{});
     }, 2500);
   }
   audio.addEventListener('error', reconnectStream);
   audio.addEventListener('ended', reconnectStream);
+
+  // collapsible sections — click header toggles .collapsed on the row
+  document.querySelectorAll('.collapsible > .head').forEach(h=>{
+    h.addEventListener('click', ()=> h.parentElement.classList.toggle('collapsed'));
+  });
+
   $('form').addEventListener('submit', async e=>{
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
     $('q').value='';
-    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); refresh(); }catch(_){}
+    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); refresh(); refreshDJLog(); }catch(_){}
   });
 
-  // progress state — updated by poll(), ticked every second by tickProgress()
   let startedAt = null, duration = null, coverTitle = null, coverURL = null;
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
@@ -296,27 +348,41 @@
       if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
       else { $('reqwrap').style.display='none'; }
 
-      // progress inputs
       startedAt = j.startedAt ? Date.parse(j.startedAt) : null;
       duration = (typeof c.duration === 'number') ? c.duration : null;
 
-      // listeners (hidden when 0 — nobody connected)
       const l = (typeof j.listeners === 'number') ? j.listeners : 0;
       $('listeners').style.display = l>0 ? '' : 'none';
       $('listeners-count').textContent = l;
 
-      // history (last played, newest first)
       const h = j.history||[];
-      if(h.length){ $('history').style.display=''; $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join(''); }
-      else { $('history').style.display='none'; }
+      if(h.length){
+        $('history').style.display='';
+        $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('');
+      } else { $('history').style.display='none'; }
 
-      // cover — refetch only when the track changes (server ETag would 304 anyway)
       if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
       updateMediaMeta();
       tickProgress();
   }
   async function refresh(){
     try{ const j = await fetch('/now-playing').then(r=>r.json()); applyNowPlaying(j); }catch(_){}
+  }
+
+  // DJ speech + request log — newest first, color-coded by tag.
+  async function refreshDJLog(){
+    try{
+      const txt = await fetch('/dj-log').then(r=>r.text());
+      const lines = txt.trim().split('\n').filter(Boolean);
+      const pre = $('djlog-body');
+      if(!lines.length){ pre.innerHTML = '<span class="empty">Todavía no habló el locutor…</span>'; return; }
+      pre.innerHTML = lines.reverse().slice(0,120).map(ln=>{
+        // "HH:MM:SS [TAG] text" → tag colored
+        const m = ln.match(/^(\d\d:\d\d:\d\d)\s*\[(DJ|PEDIDO|HORA)\]\s*(.*)$/);
+        if(!m) return esc(ln);
+        return esc(m[1])+' <b>['+m[2]+']</b> '+esc(m[3]);
+      }).join('\n');
+    }catch(_){}
   }
 
   function loadCover(){
@@ -340,9 +406,11 @@
   }
 
   refresh();
+  refreshDJLog();
   const es = new EventSource('events');
   es.onmessage = e => { try{ applyNowPlaying(JSON.parse(e.data)); }catch(_){} };
   setInterval(tickProgress, 1000);
+  setInterval(refreshDJLog, 12000);   // keep the locutor feed fresh
 </script>
 </body>
 </html>
