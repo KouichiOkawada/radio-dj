@@ -16,6 +16,7 @@
     --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
     --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
     --hist:#9a7b3e;
+    --fill:0; --pmax:54px; --pmin:15px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100%}
@@ -46,83 +47,115 @@
   .playing .onair{ background:var(--onair); color:#fff; }
   .playing .led{ border-color:#fff; }
 
-  /* ── CASSETTE — semi-transparent shell, real anatomy ── */
-  .cass{
-    background:linear-gradient(165deg,rgba(54,43,34,.94),rgba(16,12,9,.97));
-    border:3px solid #0a0805; border-radius:13px; padding:0 0 14px; position:relative;
-    box-shadow:6px 6px 0 var(--line), inset 0 1px 0 rgba(255,255,255,.05);
-  }
-  /* corner screws */
-  .scr{ position:absolute; width:10px; height:10px; border-radius:50%; z-index:7;
-    background:radial-gradient(circle at 35% 35%,#c9a45a,#6e5530 60%,#332618);
-    box-shadow:0 0 0 1.5px #0a0805; }
-  .scr.tl{top:8px;left:8px}.scr.tr{top:8px;right:8px}
-  .scr.bl{bottom:8px;left:8px}.scr.br{bottom:8px;right:8px}
+  /* ── CASSETTE — vintage tripartite, lighter palette ── */
+  .cass-wrap{ perspective:1300px; }
+  .flipper{ transform-style:preserve-3d; will-change:transform; }
 
-  /* top label — paper sticker with the track info */
-  .label{ margin:18px 20px 0; padding:11px 13px;
-    background:var(--paper); border:2px solid #0a0805; border-radius:4px;
-    box-shadow:inset 0 0 0 1px rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.35); }
-  .now-row{ display:flex; gap:12px; align-items:stretch; }
-  .now-text{ flex:1; min-width:0; }
-  .cover{ width:60px; height:60px; flex:0 0 auto; background:#3a2f25 center/cover no-repeat;
-    border:2px solid #000; border-radius:2px; display:none; }
+  .cass{
+    background:linear-gradient(172deg,#84a4a9 0%,#6B8B90 50%,#547273 100%);
+    border:3px solid #2f3d40; border-radius:14px; position:relative; overflow:hidden;
+    box-shadow:4px 4px 0 var(--line), inset 0 2px 0 rgba(255,255,255,.2), inset 0 -4px 8px rgba(0,0,0,.18);
+  }
+  /* grip notches on the sides */
+  .cass::before,.cass::after{ content:""; position:absolute; top:36%; width:3px; height:22px;
+    background:repeating-linear-gradient(#2f3d40 0 1.5px,transparent 1.5px 4px); opacity:.45; z-index:3; }
+  .cass::before{ left:3px; } .cass::after{ right:3px; }
+  /* 5 screws (4 corners + bottom-center) */
+  .scr{ position:absolute; width:11px; height:11px; border-radius:50%; z-index:8;
+    background:radial-gradient(circle at 35% 35%,#d4c4a0,#8a7a5a 60%,#5a4d36);
+    box-shadow:0 0 0 1.5px #2f3d40; }
+  .scr::after{ content:""; position:absolute; inset:2.5px; border-radius:50%;
+    background:linear-gradient(45deg,transparent 44%,#3a3328 44% 56%,transparent 56%),
+               linear-gradient(135deg,transparent 44%,#3a3328 44% 56%,transparent 56%); }
+  .scr.tl{top:7px;left:7px}.scr.tr{top:7px;right:7px}
+  .scr.bl{bottom:7px;left:7px}.scr.br{bottom:7px;right:7px}
+  .scr.bc{bottom:6px;left:50%;margin-left:-5.5px;z-index:9}
+
+  /* ── LABEL: tripartite sticker (cream / brown / orange) ── */
+  .label{ margin:16px 16px 0; border:2px solid #2f3d40; border-radius:5px; overflow:hidden;
+    box-shadow:0 2px 5px rgba(0,0,0,.3); }
+  /* TOP zone — cream, cover + track info */
+  .lbl-top{ background:#f2e1b1; padding:10px 12px; }
+  .now-row{ display:flex; gap:11px; align-items:center; }
+  .cover{ width:46px; height:46px; flex:0 0 auto; background:#765037 center/cover no-repeat;
+    border:2px solid #2f3d40; border-radius:3px; display:none; }
   .cover.has{ display:block; }
-  .k{ font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--soft); font-weight:800; }
-  .title{ font-size:17px; font-weight:900; text-transform:uppercase; margin-top:4px;
-    display:flex; gap:9px; align-items:center; }
+  .now-text{ flex:1; min-width:0; }
+  .k{ font-size:8px; letter-spacing:2px; text-transform:uppercase; color:#7a5538; font-weight:800; }
+  .title{ font-size:15px; font-weight:900; text-transform:uppercase; margin-top:2px;
+    display:flex; gap:8px; align-items:center; color:#2a1d10; }
   .title span:last-child{ overflow-wrap:anywhere; }
-  .eq{ display:inline-flex; gap:3px; height:18px; align-items:flex-end; flex-shrink:0; }
-  .eq i{ width:4px; height:5px; background:var(--onair); display:block; }
+  .eq{ display:inline-flex; gap:2px; height:15px; align-items:flex-end; flex-shrink:0; }
+  .eq i{ width:3px; height:4px; background:#e05d2b; display:block; }
   .playing .eq i{ animation:eq .7s steps(4) infinite alternate; }
   .eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}
   .eq i:nth-child(4){animation-delay:.36s}.eq i:nth-child(5){animation-delay:.48s}
-  @keyframes eq{ to{ height:16px; } }
-  .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; overflow-wrap:anywhere; }
-  .prog-wrap{ margin-top:9px; }
-  .prog{ height:11px; position:relative; background:#3a2f25; border:2px solid #000; overflow:hidden; }
-  .prog-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background:var(--onair); }
-  .prog-time{ display:flex; justify-content:space-between; margin-top:3px;
-    font-size:9px; font-weight:900; letter-spacing:1px; color:var(--soft); font-family:monospace; }
-
-  /* reel window — dark glass showing two hubs + the tape */
-  .window{ margin:11px 20px 0; background:var(--window); border:2px solid #0a0805;
-    border-radius:7px; padding:16px 14px 14px; display:flex; align-items:center; gap:0;
-    box-shadow:inset 0 3px 9px rgba(0,0,0,.75); }
-  .reel-hole{ width:96px; height:96px; flex:0 0 auto; position:relative;
+  @keyframes eq{ to{ height:13px; } }
+  .artist{ font-size:11px; color:#7a5538; margin-top:1px; font-weight:700; overflow-wrap:anywhere; }
+  /* MID zone — brown, side letter + reel window + gauge */
+  .lbl-mid{ background:#765037; padding:8px 10px; border-top:1.5px solid #2f3d40;
+    display:flex; align-items:stretch; gap:8px; }
+  .side-letter{ font-size:30px; font-weight:900; color:#f2e1b1; flex:0 0 auto; width:24px;
+    text-align:center; text-shadow:1px 1px 0 #2a1d10; align-self:center; transition:opacity .25s; }
+  .reel-area{ flex:1; min-width:0; }
+  .reel-row{ display:flex; align-items:center; gap:0; padding:6px;
+    background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; }
+  .reel-hole{ width:64px; height:64px; flex:0 0 auto; position:relative;
     display:flex; align-items:center; justify-content:center; }
-  /* tape wound on hub — concentric brown rings. left reel = full, right = just started */
-  .pile{ position:absolute; border-radius:50%; z-index:1;
-    background:repeating-radial-gradient(circle,#3d2f1f 0 2px,#312517 2px 3.5px);
-    box-shadow:inset 0 0 5px rgba(0,0,0,.55),0 0 0 1px #0a0805; }
-  .pile.l{ width:82px; height:82px; }
-  .pile.r{ width:48px; height:48px; }
-  /* spinning hub — brass spool with 6 teeth, sits atop the tape pile */
-  .hub{ width:32px; height:32px; border-radius:50%; position:relative; z-index:2;
-    background:radial-gradient(circle,#1a1410 0 22%,#9a7e4e 23% 38%,var(--reel) 39% 52%,#6e5530 53%);
-    box-shadow:0 0 0 2px #4a3a22; }
-  .hub::before{ content:""; position:absolute; inset:-4px; border-radius:50%;
+  /* tape wound on hub — concentric brown rings. Size driven by --fill (0→1):
+     left pile SHRINKS, right pile GROWS as the song plays */
+  .pile{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    border-radius:50%; z-index:1;
+    background:repeating-radial-gradient(circle,#241a10 0 1.5px,#3a2c1c 1.5px 3px);
+    box-shadow:0 0 0 1px #100a05; transition:width .4s linear,height .4s linear; }
+  .pile.l{ width:calc(var(--pmax) - (var(--pmax) - var(--pmin)) * var(--fill,0));
+            height:calc(var(--pmax) - (var(--pmax) - var(--pmin)) * var(--fill,0)); }
+  .pile.r{ width:calc(var(--pmin) + (var(--pmax) - var(--pmin)) * var(--fill,0));
+            height:calc(var(--pmin) + (var(--pmax) - var(--pmin)) * var(--fill,0)); }
+  /* spinning hub — cream/brass spool with 6 teeth, sits atop the tape pile */
+  .hub{ width:24px; height:24px; border-radius:50%; position:relative; z-index:2;
+    background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%);
+    box-shadow:0 0 0 2px #5a4d36; }
+  .hub::before{ content:""; position:absolute; inset:-3px; border-radius:50%;
     background:conic-gradient(from 0deg,
-      var(--reel) 0 26deg,transparent 0 60deg,var(--reel) 0 86deg,transparent 0 120deg,
-      var(--reel) 0 146deg,transparent 0 180deg,var(--reel) 0 206deg,transparent 0 240deg,
-      var(--reel) 0 266deg,transparent 0 300deg,var(--reel) 0 326deg,transparent 0 360deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 13px,#000 14px);
-            mask:radial-gradient(circle,transparent 0 13px,#000 14px); }
+      #f2e1b1 0 26deg,transparent 0 60deg,#f2e1b1 0 86deg,transparent 0 120deg,
+      #f2e1b1 0 146deg,transparent 0 180deg,#f2e1b1 0 206deg,transparent 0 240deg,
+      #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
+    -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px);
+            mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
   .playing .hub{ animation:spin 2.4s linear infinite; }
   .playing .hub:last-child{ animation-duration:3.4s; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  /* tape strip between the two reels */
-  .tape-strip{ flex:1; height:8px; margin:0 2px;
-    background:linear-gradient(#4a3a28,#2a1f15);
-    border-top:1px solid #5a4838; border-bottom:1px solid #100c09; }
-
-  /* alignment holes below the window */
-  .holes{ display:flex; justify-content:space-around; align-items:center; padding:10px 30px 0; }
-  .holes i{ width:7px; height:7px; border-radius:50%; background:#050302;
-    box-shadow:inset 0 1px 2px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.04); }
+  .tape-strip{ flex:1; height:6px; margin:0 2px;
+    background:linear-gradient(#3d2f1f,#241a10);
+    border-top:1px solid #5a4a36; border-bottom:1px solid #100c09; border-radius:1px; }
+  /* gauge — tick marks + advancing dot = progress indicator */
+  .gauge{ margin-top:6px; height:12px; position:relative; }
+  .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
+  .gauge-ticks{ display:flex; justify-content:space-between; position:relative; }
+  .gauge-ticks i{ width:1.5px; height:8px; background:#f2e1b1; opacity:.5; }
+  .gauge-dot{ position:absolute; top:1px; left:calc(var(--fill,0) * 100%); width:9px; height:9px;
+    border-radius:50%; background:#e05d2b; border:1.5px solid #f2e1b1;
+    transform:translateX(-50%); box-shadow:0 0 5px rgba(224,93,43,.7); transition:left .8s linear; }
+  /* BOT zone — orange banner */
+  .lbl-bot{ background:#e05d2b; padding:6px 12px; display:flex; justify-content:space-between;
+    align-items:center; border-top:1.5px solid #2f3d40; }
+  .lbl-tag{ font-size:9px; font-weight:900; letter-spacing:1.5px; color:#fff; text-transform:uppercase; }
+  .lbl-time{ font-size:11px; font-weight:800; color:#fff; font-family:monospace; letter-spacing:1px; }
+  /* trapezoidal mechanical section (bottom of cassette) */
+  .mech{ margin:8px 16px 11px; height:30px; position:relative;
+    background:linear-gradient(#5f8085,#44666a);
+    clip-path:polygon(7% 0,93% 0,100% 100%,0 100%); }
+  .mech-head{ position:absolute; left:50%; top:4px; transform:translateX(-50%);
+    width:50px; height:12px; background:#15100a; border:1.5px solid #f2e1b1; border-radius:2px; }
+  .mech-cap{ position:absolute; top:4px; width:10px; height:10px; border-radius:50%;
+    background:#15100a; border:1.5px solid #f2e1b1; }
+  .mech-cap.l{ left:21%; } .mech-cap.r{ right:21%; }
+  .mech-guide{ position:absolute; top:8px; width:6px; height:6px; background:#15100a; border:1px solid #f2e1b1; }
+  .mech-guide.l{ left:10%; } .mech-guide.r{ right:10%; }
 
   /* transport — physical deck keys living INSIDE the cassette */
-  .transport{ display:flex; gap:12px; margin:14px 20px 0; }
+  .transport{ display:flex; gap:12px; margin-top:7px; }
   .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer;
     font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px;
     color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
@@ -184,23 +217,24 @@
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
-    .label,.window{ margin-left:16px; margin-right:16px; }
-    .reel-hole{ width:80px; height:80px; }
-    .pile.l{ width:68px; height:68px; } .pile.r{ width:40px; height:40px; }
-    .hub{ width:26px; height:26px; }
-    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 10px,#000 11px); mask:radial-gradient(circle,transparent 0 10px,#000 11px); }
-    .title{ font-size:16px; }
-    .cover{ width:54px; height:54px; }
+    :root{ --pmax:46px; --pmin:13px; }
+    .reel-hole{ width:56px; height:56px; }
+    .hub{ width:21px; height:21px; }
+    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 8px,#000 9px); mask:radial-gradient(circle,transparent 0 8px,#000 9px); }
+    .side-letter{ font-size:26px; }
+    .title{ font-size:14px; }
+    .cover{ width:42px; height:42px; }
   }
   @media (max-width:360px){
     .bar > *{ padding:9px 8px; letter-spacing:1px; font-size:12px; }
     .brand{ font-size:12px; }
-    .label,.window{ margin-left:13px; margin-right:13px; }
-    .reel-hole{ width:68px; height:68px; }
-    .pile.l{ width:56px; height:56px; } .pile.r{ width:34px; height:34px; }
-    .hub{ width:22px; height:22px; }
-    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 8px,#000 9px); mask:radial-gradient(circle,transparent 0 8px,#000 9px); }
-    .title{ font-size:15px; gap:8px; }
+    :root{ --pmax:38px; --pmin:11px; }
+    .reel-hole{ width:46px; height:46px; }
+    .hub{ width:17px; height:17px; }
+    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 6px,#000 7px); mask:radial-gradient(circle,transparent 0 6px,#000 7px); }
+    .side-letter{ font-size:22px; }
+    .title{ font-size:13px; gap:7px; }
+    .cover{ width:36px; height:36px; }
     .stack{ gap:9px; }
   }
   @media (max-height:680px){ .stack{ margin:0 auto; } }
@@ -216,35 +250,57 @@
       <span class="onair"><span class="led"></span> ON AIR</span>
     </div>
 
-    <div class="blk cass">
-      <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i>
-      <!-- top label: cover + track info -->
-      <div class="label">
-        <div class="now-row">
-          <div class="cover" id="cover"></div>
-          <div class="now-text">
-            <div class="k">Ahora suena</div>
-            <div class="title">
-              <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
-              <span id="title">SINTONIZANDO</span>
+    <div class="cass-wrap">
+      <div class="flipper" id="flipper">
+        <div class="blk cass">
+          <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i>
+          <i class="scr bc"></i>
+          <!-- top label: cream/brown/orange tripartite sticker -->
+          <div class="label">
+            <div class="lbl-top">
+              <div class="now-row">
+                <div class="cover" id="cover"></div>
+                <div class="now-text">
+                  <div class="k">Ahora suena</div>
+                  <div class="title">
+                    <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+                    <span id="title">SINTONIZANDO</span>
+                  </div>
+                  <div class="artist" id="artist"></div>
+                </div>
+              </div>
             </div>
-            <div class="artist" id="artist"></div>
+            <div class="lbl-mid">
+              <div class="side-letter" id="side-label">A</div>
+              <div class="reel-area">
+                <div class="reel-row">
+                  <div class="reel-hole"><div class="pile l" id="pile-l"></div><div class="hub"></div></div>
+                  <div class="tape-strip"></div>
+                  <div class="reel-hole"><div class="pile r" id="pile-r"></div><div class="hub"></div></div>
+                </div>
+                <div class="gauge" id="prog" style="display:none">
+                  <div class="gauge-track"></div>
+                  <div class="gauge-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="gauge-dot"></div>
+                </div>
+              </div>
+            </div>
+            <div class="lbl-bot">
+              <span class="lbl-tag">RADIO·DJ 88.7</span>
+              <span class="lbl-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
+            </div>
+          </div>
+          <!-- trapezoidal mechanical section -->
+          <div class="mech">
+            <div class="mech-guide l"></div>
+            <div class="mech-cap l"></div>
+            <div class="mech-head"></div>
+            <div class="mech-cap r"></div>
+            <div class="mech-guide r"></div>
           </div>
         </div>
-        <div class="prog-wrap" id="prog" style="display:none">
-          <div class="prog"><div class="prog-fill" id="prog-fill"></div></div>
-          <div class="prog-time"><span id="elapsed">0:00</span><span id="dur-total">0:00</span></div>
-        </div>
       </div>
-      <!-- reel window: two hubs + tape (left reel = full, right = started) -->
-      <div class="window">
-        <div class="reel-hole"><div class="pile l"></div><div class="hub"></div></div>
-        <div class="tape-strip"></div>
-        <div class="reel-hole"><div class="pile r"></div><div class="hub"></div></div>
-      </div>
-      <!-- alignment holes -->
-      <div class="holes"><i></i><i></i><i></i><i></i><i></i></div>
-      <!-- transport keys -->
+      <!-- transport keys — BELOW the cassette, immediately under it -->
       <div class="transport">
         <button class="t-play" id="play"><span id="play-ico">▶</span> <span id="play-txt">PLAY</span></button>
         <button class="t-stop dim" id="stop">■ STOP</button>
@@ -370,11 +426,16 @@
   });
 
   let startedAt = null, duration = null, coverTitle = null, coverURL = null;
+  let lastTitle = null, sideA = true;
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 
   function applyNowPlaying(j){
     const c = j.current||{};
+    if(c.title && c.title !== lastTitle){
+      if(lastTitle !== null) flipCassette();
+      lastTitle = c.title;
+    }
       metaTitle = c.title||''; metaArtist = c.artist||'';
       $('title').textContent = (metaTitle||'—').toUpperCase();
       $('artist').textContent = metaArtist;
@@ -430,14 +491,33 @@
     }).catch(()=>{ $('cover').classList.remove('has'); $('cover').style.backgroundImage=''; });
   }
 
+  // side A/B flip — rotates cassette to edge-on, swaps side, resets tape, rotates back
+  function flipCassette(){
+    const fp = $('flipper');
+    if(!fp) return;
+    fp.style.transition = 'transform .38s cubic-bezier(.5,0,.7,.2)';
+    fp.style.transform = 'rotateY(90deg)';
+    setTimeout(()=>{
+      sideA = !sideA;
+      const sl = $('side-label');
+      if(sl) sl.textContent = sideA ? 'A' : 'B';
+      syncReels(0);
+      fp.style.transition = 'transform .38s cubic-bezier(.3,.4,.5,1)';
+      fp.style.transform = 'rotateY(0deg)';
+    }, 380);
+  }
   function tickProgress(){
-    if(!startedAt || !duration){ $('prog').style.display='none'; return; }
+    if(!startedAt || !duration){ $('prog').style.display='none'; syncReels(0); return; }
     $('prog').style.display='';
     const el = (Date.now() - startedAt)/1000;
     const p = Math.min(1, Math.max(0, el/duration));
-    $('prog-fill').style.width = (p*100)+'%';
+    syncReels(p);
     $('elapsed').textContent = fmt(el);
     $('dur-total').textContent = fmt(duration);
+  }
+  // sync tape reels + progress with song position (p = 0→1)
+  function syncReels(p){
+    document.documentElement.style.setProperty('--fill', p.toFixed(4));
   }
 
   refresh();
