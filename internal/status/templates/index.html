@@ -17,7 +17,13 @@
     --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
     --hist:#9a7b3e;
   }
-  *{box-sizing:border-box;margin:0;padding:0}
+  /* scrollbars — cassette: ventana oscura + carrete brass, nada nativo */
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:var(--window); }
+  ::-webkit-scrollbar-thumb{ background:var(--reel); border:2px solid var(--window); }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
+  ::-webkit-scrollbar-corner{ background:var(--window); }
+  *{box-sizing:border-box;margin:0;padding:0;scrollbar-width:thin;scrollbar-color:var(--reel) var(--window);
   html,body{min-height:100%}
   body{ background:var(--bg); color:var(--ink);
     font-family:"Helvetica Neue",Arial,sans-serif;
