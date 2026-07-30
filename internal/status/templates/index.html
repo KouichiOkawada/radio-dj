@@ -258,6 +258,22 @@
     navigator.mediaSession.setActionHandler('play',  ()=> audio.play());
     navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
   }
+
+  // live-stream resilience — on lid-close the Wi-Fi re-associates (1-3s blip),
+  // the long-lived TCP dies, and <audio> won't resume on its own. Reconnect.
+  let reconnectTimer = null;
+  function reconnectStream(){
+    if(reconnectTimer) return;
+    $('state').textContent = 'RECONECTANDO…';
+    deck.classList.remove('playing');
+    reconnectTimer = setTimeout(()=>{
+      reconnectTimer = null;
+      audio.src = 'stream.mp3?t=' + Date.now(); // cache-bust → fuerza socket nuevo
+      audio.play().catch(()=>{}); // si vuelve a fallar, 'error' reagenda otro reintento
+    }, 2500);
+  }
+  audio.addEventListener('error', reconnectStream);
+  audio.addEventListener('ended', reconnectStream);
   $('form').addEventListener('submit', async e=>{
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
