@@ -97,8 +97,8 @@
     display:flex; align-items:stretch; gap:8px; }
   .side-letter{ font-size:30px; font-weight:900; color:#f2e1b1; flex:0 0 auto; width:24px;
     text-align:center; text-shadow:1px 1px 0 #2a1d10; align-self:center; transition:opacity .25s; }
-  .reel-area{ flex:1; min-width:0; }
-  .reel-row{ display:flex; align-items:center; gap:0; padding:6px;
+  .tape-zone{ position:relative; z-index:0; flex:1; min-width:0; }
+  .reel-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 14px;
     background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; }
   .reel-hole{ width:72px; height:72px; flex:0 0 auto; position:relative;
     display:flex; align-items:center; justify-content:center; }
@@ -112,7 +112,7 @@
   .pile.r{ width:var(--r2,16px); height:var(--r2,16px); }
   .no-trans .pile{ transition:none !important; }
   /* spinning hub — cream/brass spool with 6 teeth, sits atop the tape pile */
-  .hub{ width:24px; height:24px; border-radius:50%; position:relative; z-index:2;
+  .hub{ width:24px; height:24px; border-radius:50%; position:relative; z-index:3;
     background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%);
     box-shadow:0 0 0 2px #5a4d36; }
   .hub::before{ content:""; position:absolute; inset:-3px; border-radius:50%;
@@ -137,12 +137,16 @@
   /* tape path — SVG curve: exits reels at center height, dips to guide
      roller level, runs horizontal across the head, rises back up.
      Semi-transparent + dash animation = visible tape movement. */
-  .tape-svg{ flex:1; height:28px; overflow:visible; z-index:0; }
-  .tape-path{ fill:none; stroke:rgba(45,30,18,0.7); stroke-width:7;
-    stroke-linecap:round; vector-effect:non-scaling-stroke;
-    stroke-dasharray:7 3.5; animation:tapeMove .35s linear infinite; }
-  .tape-svg.leader .tape-path{ stroke:rgba(255,240,230,0.4); }
-  @keyframes tapeMove{ to{ stroke-dashoffset:-10.5; } }
+  /* ── TAPE LAYER: global SVG overlay spanning reels → mech ── */
+  .tape-layer{ position:absolute; inset:0; z-index:2; pointer-events:none; overflow:visible; }
+  .tape-layer .tape-shadow{ fill:none; stroke:#000; stroke-width:11;
+    stroke-linecap:round; stroke-linejoin:round; opacity:0.22; }
+  .tape-layer .tape-path{ fill:none; stroke:#1a1008; stroke-width:6;
+    stroke-linecap:round; stroke-linejoin:round;
+    stroke-dasharray:9 4; animation:tapeFlow .3s linear infinite; }
+  .tape-layer.leader .tape-path{ stroke:rgba(255,245,230,0.5); }
+  .tape-layer.leader .tape-shadow{ opacity:0.08; }
+  @keyframes tapeFlow{ to{ stroke-dashoffset:-13; } }
   /* gauge — tick marks + advancing dot = progress indicator */
   .gauge{ margin-top:6px; height:12px; position:relative; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
@@ -157,9 +161,10 @@
   .lbl-tag{ font-size:9px; font-weight:900; letter-spacing:1.5px; color:#fff; text-transform:uppercase; }
   .lbl-time{ font-size:11px; font-weight:800; color:#fff; font-family:monospace; letter-spacing:1px; }
   /* trapezoidal mechanical section (bottom of cassette) */
-  .mech{ margin:8px 16px 11px; height:30px; position:relative;
+  .mech{ margin:6px 0 0; height:30px; position:relative;
     background:linear-gradient(#5f8085,#44666a);
     clip-path:polygon(7% 0,93% 0,100% 100%,0 100%); }
+  .mech-head,.mech-cap,.mech-guide{ z-index:3; }
   .mech-head{ position:absolute; left:50%; top:4px; transform:translateX(-50%);
     width:50px; height:12px; background:#15100a; border:1.5px solid #f2e1b1; border-radius:2px; }
   .mech-cap{ position:absolute; top:4px; width:10px; height:10px; border-radius:50%;
@@ -286,16 +291,26 @@
             </div>
             <div class="lbl-mid">
               <div class="side-letter" id="side-label">A</div>
-              <div class="reel-area">
+              <div class="tape-zone">
+                <svg class="tape-layer" id="tapeLayer">
+                  <path class="tape-shadow" id="tapeShadow" />
+                  <path class="tape-path" id="tapePath" />
+                </svg>
                 <div class="reel-row">
-                  <div class="reel-hole"><div class="pile l" id="pile-l"></div><div class="hub l"></div></div>
-                  <svg class="tape-svg" viewBox="0 0 100 30" preserveAspectRatio="none"><path class="tape-path" d="M0,5 Q8,24 22,22 L78,22 Q92,24 100,5" /></svg>
-                  <div class="reel-hole"><div class="pile r" id="pile-r"></div><div class="hub r"></div></div>
+                  <div class="reel-hole l"><div class="pile l" id="pile-l"></div><div class="hub l"></div></div>
+                  <div class="reel-hole r"><div class="pile r" id="pile-r"></div><div class="hub r"></div></div>
                 </div>
                 <div class="gauge" id="prog" style="display:none">
                   <div class="gauge-track"></div>
                   <div class="gauge-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
                   <div class="gauge-dot"></div>
+                </div>
+                <div class="mech">
+                  <div class="mech-guide l"></div>
+                  <div class="mech-cap l"></div>
+                  <div class="mech-head"></div>
+                  <div class="mech-cap r"></div>
+                  <div class="mech-guide r"></div>
                 </div>
               </div>
             </div>
@@ -303,14 +318,6 @@
               <span class="lbl-tag">RADIO·DJ 88.7</span>
               <span class="lbl-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
             </div>
-          </div>
-          <!-- trapezoidal mechanical section -->
-          <div class="mech">
-            <div class="mech-guide l"></div>
-            <div class="mech-cap l"></div>
-            <div class="mech-head"></div>
-            <div class="mech-cap r"></div>
-            <div class="mech-guide r"></div>
           </div>
         </div>
       </div>
@@ -553,10 +560,56 @@
     root.setProperty('--r2', r2.toFixed(1)+'px');
     root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
     root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
-    const svg = document.querySelector('.tape-svg');
-    if(svg) svg.classList.toggle('leader', p < 0.04 || p > 0.96);
+    updateTapePath(r1, r2);
+    const layer = document.querySelector('.tape-layer');
+    if(layer) layer.classList.toggle('leader', p < 0.05 || p > 0.95);
+  }
+  // ── Tape path geometry: dynamic 7-point SVG path computed from DOM positions
+  // P1: left reel outer tangent → P2: guide-L → P3: cap-L → P4: head → P5: cap-R → P6: guide-R → P7: right reel outer tangent
+  // Tangent points computed via trig: tape exits reel circle where line to guide is tangent.
+  function elCenter(el, zone){
+    if(!el) return null;
+    const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
+    return { x: r.left+r.width/2-z.left, y: r.top+r.height/2-z.top };
+  }
+  function tangentPt(c, rad, t){
+    const dx=t.x-c.x, dy=t.y-c.y, d=Math.hypot(dx,dy);
+    if(d <= rad*1.05) return { x:c.x+rad*dx/(d||1), y:c.y+rad*dy/(d||1) };
+    const a=Math.atan2(dy,dx), b=Math.acos(rad/d);
+    const p1={x:c.x+rad*Math.cos(a+b),y:c.y+rad*Math.sin(a+b)};
+    const p2={x:c.x+rad*Math.cos(a-b),y:c.y+rad*Math.sin(a-b)};
+    // pick outer tangent (same horizontal side as target relative to center)
+    return (dx<0 ? p1.x<=p2.x : p1.x>=p2.x) ? p1 : p2;
+  }
+  const rnd = n => Math.round(n*10)/10;
+  function updateTapePath(r1, r2){
+    const zone = document.querySelector('.tape-zone');
+    if(!zone) return;
+    if(r1===undefined){
+      const cs = getComputedStyle(document.documentElement);
+      r1 = parseFloat(cs.getPropertyValue('--r1'))||60;
+      r2 = parseFloat(cs.getPropertyValue('--r2'))||16;
+    }
+    const cL = elCenter(document.querySelector('.reel-hole.l'), zone);
+    const cR = elCenter(document.querySelector('.reel-hole.r'), zone);
+    const guideL = elCenter(document.querySelector('.mech-guide.l'), zone);
+    const capL = elCenter(document.querySelector('.mech-cap.l'), zone);
+    const head = elCenter(document.querySelector('.mech-head'), zone);
+    const capR = elCenter(document.querySelector('.mech-cap.r'), zone);
+    const guideR = elCenter(document.querySelector('.mech-guide.r'), zone);
+    if(!cL||!cR||!guideL||!guideR) return;
+    const p1 = tangentPt(cL, r1, guideL);
+    const p7 = tangentPt(cR, r2, guideR);
+    const pts = [p1, guideL, capL, head, capR, guideR, p7].filter(Boolean);
+    const d = 'M' + pts.map(p => rnd(p.x)+','+rnd(p.y)).join(' L');
+    const tp = document.getElementById('tapePath');
+    const ts = document.getElementById('tapeShadow');
+    if(tp) tp.setAttribute('d', d);
+    if(ts) ts.setAttribute('d', d);
   }
   syncReels(0); // set initial state on load
+  requestAnimationFrame(updateTapePath); // compute path after first layout
+  window.addEventListener('resize', updateTapePath);
 
   refresh();
   refreshDJLog();
