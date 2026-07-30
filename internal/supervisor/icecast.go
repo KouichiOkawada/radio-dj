@@ -191,7 +191,7 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw string) str
     <clients>100</clients>
     <sources>4</sources>
     <source-timeout>120</source-timeout>
-    <burst-size>528000</burst-size>
+    <burst-size>65536</burst-size>
   </limits>
   <authentication>
     <source-password>%s</source-password>
@@ -212,7 +212,7 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw string) str
   <logging><accesslog>access.log</accesslog><errorlog>error.log</errorlog><loglevel>2</loglevel></logging>
   <mount>
     <mount-name>/stream.mp3</mount-name>
-    <burst-size>528000</burst-size>
+    <burst-size>65536</burst-size>
     <stream-name>radio-dj</stream-name>
   </mount>
 </icecast>
