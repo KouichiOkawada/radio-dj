@@ -4,11 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#efe6d2">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="RADIO-DJ">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23e8c464'/%3E%3Crect x='56' y='150' width='400' height='212' rx='24' fill='%23241e18'/%3E%3Ccircle cx='176' cy='256' r='56' fill='none' stroke='%23b08a4e' stroke-width='18'/%3E%3Ccircle cx='336' cy='256' r='56' fill='none' stroke='%23b08a4e' stroke-width='18'/%3E%3Crect x='206' y='298' width='100' height='20' rx='6' fill='%23efe6d2'/%3E%3C/svg%3E">
 <title>RADIO-DJ</title>
 <style>
   :root{
@@ -16,7 +11,7 @@
     --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
     --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
     --hist:#9a7b3e;
-    --fill:0; --r-max:60px; --r-min:16px; --r1:60px; --r2:16px; --omega1:2.8s; --omega2:0.75s;
+    --fill:0; --r-max:86px; --r-min:26px; --r1:86px; --r2:26px; --omega1:2.8s; --omega2:0.75s;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100%}
@@ -30,14 +25,11 @@
       repeating-linear-gradient(90deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px);
   }
   .stack{ width:100%; max-width:540px; margin:auto; display:grid; gap:14px; }
+  .blk{ background:var(--paper); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
 
-  .blk{ background:var(--paper); border:3px solid var(--line);
-    box-shadow:6px 6px 0 var(--line); }
-
-  /* header */
+  /* Bar */
   .bar{ display:flex; align-items:stretch; }
-  .bar > *{ padding:12px 14px; display:flex; align-items:center; gap:8px;
-    font-weight:800; text-transform:uppercase; letter-spacing:2px; }
+  .bar > *{ padding:12px 14px; display:flex; align-items:center; gap:8px; font-weight:800; text-transform:uppercase; letter-spacing:2px; }
   .brand{ background:var(--gold); border-right:3px solid var(--line); font-size:15px; flex:0 0 auto; }
   .freq{ background:var(--paper); border-right:3px solid var(--line); color:var(--soft); flex:0 0 auto; }
   .onair{ margin-left:auto; background:var(--paper); }
@@ -47,20 +39,18 @@
   .playing .onair{ background:var(--onair); color:#fff; }
   .playing .led{ border-color:#fff; }
 
-  /* ── CASSETTE — vintage tripartite, lighter palette ── */
+  /* Cassette Structure */
   .cass-wrap{ perspective:1300px; }
   .flipper{ transform-style:preserve-3d; will-change:transform; }
-
   .cass{
     background:linear-gradient(172deg,#84a4a9 0%,#6B8B90 50%,#547273 100%);
     border:3px solid #2f3d40; border-radius:14px; position:relative; overflow:hidden;
     box-shadow:4px 4px 0 var(--line), inset 0 2px 0 rgba(255,255,255,.2), inset 0 -4px 8px rgba(0,0,0,.18);
   }
-  /* grip notches on the sides */
   .cass::before,.cass::after{ content:""; position:absolute; top:36%; width:3px; height:22px;
     background:repeating-linear-gradient(#2f3d40 0 1.5px,transparent 1.5px 4px); opacity:.45; z-index:3; }
   .cass::before{ left:3px; } .cass::after{ right:3px; }
-  /* 5 screws (4 corners + bottom-center) */
+
   .scr{ position:absolute; width:11px; height:11px; border-radius:50%; z-index:8;
     background:radial-gradient(circle at 35% 35%,#d4c4a0,#8a7a5a 60%,#5a4d36);
     box-shadow:0 0 0 1.5px #2f3d40; }
@@ -71,19 +61,15 @@
   .scr.bl{bottom:7px;left:7px}.scr.br{bottom:7px;right:7px}
   .scr.bc{bottom:6px;left:50%;margin-left:-5.5px;z-index:9}
 
-  /* ── LABEL: tripartite sticker (cream / brown / orange) ── */
-  .label{ margin:16px 16px 0; border:2px solid #2f3d40; border-radius:5px; overflow:hidden;
-    box-shadow:0 2px 5px rgba(0,0,0,.3); }
-  /* TOP zone — cream, cover + track info */
+  /* Label */
+  .label{ margin:16px 16px 0; border:2px solid #2f3d40; border-radius:5px; overflow:hidden; box-shadow:0 2px 5px rgba(0,0,0,.3); }
   .lbl-top{ background:#f2e1b1; padding:10px 12px; }
   .now-row{ display:flex; gap:11px; align-items:center; }
-  .cover{ width:46px; height:46px; flex:0 0 auto; background:#765037 center/cover no-repeat;
-    border:2px solid #2f3d40; border-radius:3px; display:none; }
+  .cover{ width:46px; height:46px; flex:0 0 auto; background:#765037 center/cover no-repeat; border:2px solid #2f3d40; border-radius:3px; display:none; }
   .cover.has{ display:block; }
   .now-text{ flex:1; min-width:0; }
   .k{ font-size:8px; letter-spacing:2px; text-transform:uppercase; color:#7a5538; font-weight:800; }
-  .title{ font-size:15px; font-weight:900; text-transform:uppercase; margin-top:2px;
-    display:flex; gap:8px; align-items:center; color:#2a1d10; }
+  .title{ font-size:15px; font-weight:900; text-transform:uppercase; margin-top:2px; display:flex; gap:8px; align-items:center; color:#2a1d10; }
   .title span:last-child{ overflow-wrap:anywhere; }
   .eq{ display:inline-flex; gap:2px; height:15px; align-items:flex-end; flex-shrink:0; }
   .eq i{ width:3px; height:4px; background:#e05d2b; display:block; }
@@ -92,109 +78,78 @@
   .eq i:nth-child(4){animation-delay:.36s}.eq i:nth-child(5){animation-delay:.48s}
   @keyframes eq{ to{ height:13px; } }
   .artist{ font-size:11px; color:#7a5538; margin-top:1px; font-weight:700; overflow-wrap:anywhere; }
-  /* MID zone — brown, side letter + reel window + gauge */
-  .lbl-mid{ background:#765037; padding:8px 10px; border-top:1.5px solid #2f3d40;
-    display:flex; align-items:stretch; gap:8px; }
-  .side-letter{ font-size:30px; font-weight:900; color:#f2e1b1; flex:0 0 auto; width:24px;
-    text-align:center; text-shadow:1px 1px 0 #2a1d10; align-self:center; transition:opacity .25s; }
-  .tape-zone{ position:relative; z-index:0; flex:1; min-width:0; }
-  .reel-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 14px;
-    background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; }
-  .reel-hole{ width:72px; height:72px; flex:0 0 auto; position:relative;
-    display:flex; align-items:center; justify-content:center; }
-  /* tape wound on hub — concentric brown rings. Radius set by JS via --r1/--r2
-     using physics: r ∝ √(tape amount). Left shrinks, right grows. */
-  .pile{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    border-radius:50%; z-index:1;
+
+  .lbl-mid{ background:#765037; padding:8px 10px; border-top:1.5px solid #2f3d40; display:flex; align-items:stretch; gap:8px; }
+  .side-letter{ font-size:30px; font-weight:900; color:#f2e1b1; flex:0 0 auto; width:24px; text-align:center; text-shadow:1px 1px 0 #2a1d10; align-self:center; }
+
+  /* Tape Zone & Overlay Layer */
+  .tape-zone{ position:relative; flex:1; min-width:0; }
+  .reel-row{ display:flex; align-items:center; justify-content:space-between; padding:4px 10px; background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; position:relative; z-index:1; }
+  .reel-hole{ width:88px; height:88px; flex:0 0 auto; position:relative; display:flex; align-items:center; justify-content:center; }
+
+  .pile{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border-radius:50%; z-index:1;
     background:repeating-radial-gradient(circle,#241a10 0 1.5px,#3a2c1c 1.5px 3px);
     box-shadow:0 0 0 1px #100a05; transition:width .6s linear,height .6s linear; }
-  .pile.l{ width:var(--r1,60px); height:var(--r1,60px); }
-  .pile.r{ width:var(--r2,16px); height:var(--r2,16px); }
+  .pile.l{ width:var(--r1,86px); height:var(--r1,86px); }
+  .pile.r{ width:var(--r2,26px); height:var(--r2,26px); }
   .no-trans .pile{ transition:none !important; }
-  /* spinning hub — cream/brass spool with 6 teeth, sits atop the tape pile */
-  .hub{ width:24px; height:24px; border-radius:50%; position:relative; z-index:3;
-    background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%);
-    box-shadow:0 0 0 2px #5a4d36; }
+
+  .hub{ width:26px; height:26px; border-radius:50%; position:relative; z-index:3;
+    background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%); box-shadow:0 0 0 2px #5a4d36; }
   .hub::before{ content:""; position:absolute; inset:-3px; border-radius:50%;
-    background:conic-gradient(from 0deg,
-      #f2e1b1 0 26deg,transparent 0 60deg,#f2e1b1 0 86deg,transparent 0 120deg,
-      #f2e1b1 0 146deg,transparent 0 180deg,#f2e1b1 0 206deg,transparent 0 240deg,
-      #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px);
-            mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
-  /* red leader wedge — secures tape to hub, rotates with spin */
-  .hub::after{ content:""; position:absolute; left:50%; top:50%;
-    width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+    background:conic-gradient(from 0deg, #f2e1b1 0 26deg,transparent 0 60deg,#f2e1b1 0 86deg,transparent 0 120deg, #f2e1b1 0 146deg,transparent 0 180deg,#f2e1b1 0 206deg,transparent 0 240deg, #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
+    -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px); mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
+  .hub::after{ content:""; position:absolute; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
     background:conic-gradient(#d6453a 0 50deg,transparent 50deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 2.5px,#000 3px);
-            mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); }
-  /* reels always spin — it's a radio, always broadcasting.
-     ω = v/r → duration ∝ radius (smaller reel spins faster). Both clockwise. */
+    -webkit-mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); }
+
   .hub.l{ animation:spin var(--omega1,2.8s) linear infinite; }
   .hub.r{ animation:spin var(--omega2,2.8s) linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  /* tape strip — thick, with flowing texture (always moving left→right) */
-  /* tape path — SVG curve: exits reels at center height, dips to guide
-     roller level, runs horizontal across the head, rises back up.
-     Semi-transparent + dash animation = visible tape movement. */
-  /* ── TAPE LAYER: global SVG overlay spanning reels → mech ── */
-  .tape-layer{ position:absolute; inset:0; z-index:2; pointer-events:none; overflow:visible; }
-  .tape-layer .tape-shadow{ fill:none; stroke:#000; stroke-width:11;
-    stroke-linecap:round; stroke-linejoin:round; opacity:0.22; }
-  .tape-layer .tape-path{ fill:none; stroke:#1a1008; stroke-width:6;
-    stroke-linecap:round; stroke-linejoin:round;
-    stroke-dasharray:9 4; animation:tapeFlow .3s linear infinite; }
-  .tape-layer.leader .tape-path{ stroke:rgba(255,245,230,0.5); }
-  .tape-layer.leader .tape-shadow{ opacity:0.08; }
-  @keyframes tapeFlow{ to{ stroke-dashoffset:-13; } }
-  /* gauge — tick marks + advancing dot = progress indicator */
-  .gauge{ margin-top:6px; height:12px; position:relative; }
+
+  .tape-layer{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
+  .tape-layer .tape-shadow{ fill:none; stroke:#000; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; opacity:0.35; }
+  .tape-layer .tape-path{ fill:none; stroke:#1a1008; stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round;
+    stroke-dasharray:8 4; animation:tapeFlow .3s linear infinite; }
+  .tape-layer.leader .tape-path{ stroke:rgba(255,245,230,0.6); }
+  .tape-layer.leader .tape-shadow{ opacity:0.1; }
+  @keyframes tapeFlow{ to{ stroke-dashoffset:-12; } }
+
+  .gauge{ margin-top:6px; height:12px; position:relative; z-index:1; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
   .gauge-ticks{ display:flex; justify-content:space-between; position:relative; }
   .gauge-ticks i{ width:1.5px; height:8px; background:#f2e1b1; opacity:.5; }
-  .gauge-dot{ position:absolute; top:1px; left:calc(var(--fill,0) * 100%); width:9px; height:9px;
-    border-radius:50%; background:#e05d2b; border:1.5px solid #f2e1b1;
-    transform:translateX(-50%); box-shadow:0 0 5px rgba(224,93,43,.7); transition:left .8s linear; }
-  /* BOT zone — orange banner */
-  .lbl-bot{ background:#e05d2b; padding:6px 12px; display:flex; justify-content:space-between;
-    align-items:center; border-top:1.5px solid #2f3d40; }
+  .gauge-dot{ position:absolute; top:1px; left:calc(var(--fill,0) * 100%); width:9px; height:9px; border-radius:50%; background:#e05d2b; border:1.5px solid #f2e1b1; transform:translateX(-50%); box-shadow:0 0 5px rgba(224,93,43,.7); transition:left .8s linear; }
+
+  .lbl-bot{ background:#e05d2b; padding:6px 12px; display:flex; justify-content:space-between; align-items:center; border-top:1.5px solid #2f3d40; }
   .lbl-tag{ font-size:9px; font-weight:900; letter-spacing:1.5px; color:#fff; text-transform:uppercase; }
   .lbl-time{ font-size:11px; font-weight:800; color:#fff; font-family:monospace; letter-spacing:1px; }
-  /* trapezoidal mechanical section (bottom of cassette) */
-  .mech{ margin:6px 0 0; height:30px; position:relative;
-    background:linear-gradient(#5f8085,#44666a);
-    clip-path:polygon(7% 0,93% 0,100% 100%,0 100%); }
+
+  .mech{ margin:6px 0 0; height:30px; position:relative; z-index:1; background:linear-gradient(#5f8085,#44666a); clip-path:polygon(7% 0,93% 0,100% 100%,0 100%); }
   .mech-head,.mech-cap,.mech-guide{ z-index:3; }
-  .mech-head{ position:absolute; left:50%; top:4px; transform:translateX(-50%);
-    width:50px; height:12px; background:#15100a; border:1.5px solid #f2e1b1; border-radius:2px; }
-  .mech-cap{ position:absolute; top:4px; width:10px; height:10px; border-radius:50%;
-    background:#15100a; border:1.5px solid #f2e1b1; }
+  .mech-head{ position:absolute; left:50%; top:4px; transform:translateX(-50%); width:50px; height:12px; background:#15100a; border:1.5px solid #f2e1b1; border-radius:2px; }
+  .mech-cap{ position:absolute; top:4px; width:10px; height:10px; border-radius:50%; background:#15100a; border:1.5px solid #f2e1b1; }
   .mech-cap.l{ left:21%; } .mech-cap.r{ right:21%; }
   .mech-guide{ position:absolute; top:8px; width:6px; height:6px; background:#15100a; border:1px solid #f2e1b1; }
   .mech-guide.l{ left:10%; } .mech-guide.r{ right:10%; }
 
-  /* transport — physical deck keys living INSIDE the cassette */
   .transport{ display:flex; gap:12px; margin-top:7px; }
-  .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer;
-    font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px;
-    color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
+  .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer; font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
   .transport button:active{ transform:translateY(2px); }
   .t-play{ background:var(--sage); }
   .t-play.connecting{ background:#c9bda8; animation:pulse 1s steps(2) infinite; }
-  .t-play.on{ opacity:.55; }            /* already playing — dim the cue */
+  .t-play.on{ opacity:.55; }
   @keyframes pulse{ 50%{ background:#b3a489; } }
   .dots{ display:inline-flex; gap:2px; }
   .dots i{ width:5px; height:5px; background:var(--ink); border-radius:50%; animation:bounce .6s steps(2) infinite alternate; }
   .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
   @keyframes bounce{ to{ opacity:.3; } }
   .t-stop{ background:var(--paper); color:var(--onair); }
-  .t-stop.dim{ opacity:.35; }           /* nothing to stop */
+  .t-stop.dim{ opacity:.35; }
 
-  /* meta: next + collapsible history + collapsible dj-log + requests */
   .meta{ display:grid; gap:12px; }
   .row{ padding:0; overflow:hidden; }
-  .row .head{ display:flex; justify-content:space-between; align-items:center;
-    padding:12px 14px; cursor:pointer; user-select:none; }
+  .row .head{ display:flex; justify-content:space-between; align-items:center; padding:12px 14px; cursor:pointer; user-select:none; }
   .row .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; }
   .next .lab{ color:var(--sage); }
   .history .lab{ color:var(--hist); }
@@ -205,41 +160,32 @@
   .body{ padding:0 14px 12px; }
   .collapsible.collapsed .body{ display:none; }
   .next .v{ font-weight:800; }
-  .history ul{ margin:0; list-style:none; }
+  .history ul,.reqs ul{ margin:0; list-style:none; }
   .history li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
   .history li:first-child{ border-top:none; }
-  .reqs ul{ margin:0; list-style:none; }
   .reqs li{ font-weight:700; padding:3px 0; }
-  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:monospace; font-size:11px;
-    line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
+  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:monospace; font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
   .djlog pre b{ color:#7a6437; }
   .djlog .empty{ font-size:11px; color:var(--soft); padding:2px 0; }
 
-  /* request */
   .ask{ padding:14px; }
   .ask form{ display:flex; gap:0; }
-  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none;
-    background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; }
+  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none; background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; }
   .ask input:focus{ outline:none; background:#fffdf3; }
-  .ask button{ padding:0 20px; border:3px solid var(--line); background:var(--rose); color:var(--ink);
-    font-family:inherit; font-weight:900; text-transform:uppercase; letter-spacing:1px; cursor:pointer; }
+  .ask button{ padding:0 20px; border:3px solid var(--line); background:var(--rose); color:var(--ink); font-family:inherit; font-weight:900; text-transform:uppercase; letter-spacing:1px; cursor:pointer; }
   .ask button:active{ transform:translate(2px,2px); box-shadow:none; }
   .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
 
-  .foot{ display:flex; justify-content:space-between; gap:8px; padding:8px 14px;
-    font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft);
-    background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
-  .title{ overflow-wrap:anywhere; }
+  .foot{ display:flex; justify-content:space-between; gap:8px; padding:8px 14px; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft); background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
 
   @media (max-width:480px){
     .stack{ gap:11px; }
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
-    :root{ --r-max:50px; --r-min:13px; }
-    .reel-hole{ width:62px; height:62px; }
-    .hub{ width:21px; height:21px; }
-    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 8px,#000 9px); mask:radial-gradient(circle,transparent 0 8px,#000 9px); }
+    :root{ --r-max:68px; --r-min:22px; }
+    .reel-hole{ width:72px; height:72px; }
+    .hub{ width:22px; height:22px; }
     .side-letter{ font-size:26px; }
     .title{ font-size:14px; }
     .cover{ width:42px; height:42px; }
@@ -247,22 +193,18 @@
   @media (max-width:360px){
     .bar > *{ padding:9px 8px; letter-spacing:1px; font-size:12px; }
     .brand{ font-size:12px; }
-    :root{ --r-max:42px; --r-min:11px; }
-    .reel-hole{ width:52px; height:52px; }
-    .hub{ width:17px; height:17px; }
-    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 6px,#000 7px); mask:radial-gradient(circle,transparent 0 6px,#000 7px); }
+    :root{ --r-max:56px; --r-min:18px; }
+    .reel-hole{ width:60px; height:60px; }
+    .hub{ width:18px; height:18px; }
     .side-letter{ font-size:22px; }
     .title{ font-size:13px; gap:7px; }
     .cover{ width:36px; height:36px; }
     .stack{ gap:9px; }
   }
-  @media (max-height:680px){ .stack{ margin:0 auto; } }
-  .foot .listeners{ color:var(--ink); }
 </style>
 </head>
 <body>
   <div class="stack" id="deck">
-
     <div class="blk bar">
       <span class="brand">RADIO·DJ</span>
       <span class="freq">88.7</span>
@@ -272,9 +214,7 @@
     <div class="cass-wrap">
       <div class="flipper" id="flipper">
         <div class="blk cass">
-          <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i>
-          <i class="scr bc"></i>
-          <!-- top label: cream/brown/orange tripartite sticker -->
+          <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i><i class="scr bc"></i>
           <div class="label">
             <div class="lbl-top">
               <div class="now-row">
@@ -291,7 +231,7 @@
             </div>
             <div class="lbl-mid">
               <div class="side-letter" id="side-label">A</div>
-              <div class="tape-zone">
+              <div class="tape-zone" id="tapeZone">
                 <svg class="tape-layer" id="tapeLayer">
                   <path class="tape-shadow" id="tapeShadow" />
                   <path class="tape-path" id="tapePath" />
@@ -321,7 +261,6 @@
           </div>
         </div>
       </div>
-      <!-- transport keys — BELOW the cassette, immediately under it -->
       <div class="transport">
         <button class="t-play" id="play"><span id="play-ico">▶</span> <span id="play-txt">PLAY</span></button>
         <button class="t-stop dim" id="stop">■ STOP</button>
@@ -369,9 +308,6 @@
   const $ = id => document.getElementById(id);
   const deck = $('deck');
 
-  // ---- transport: 3-state machine so the button reacts INSTANTLY to the tap,
-  //      not seconds later when the buffer finally plays. -------
-  // idle → (tap play) → connecting → (audio 'playing') → playing → (tap stop) → idle
   let audioState = 'idle';
   function setAudioState(s){
     audioState = s;
@@ -387,7 +323,7 @@
       play.classList.add('connecting'); play.classList.remove('on');
       stop.classList.add('dim');
       deck.classList.remove('playing'); $('state').textContent = 'CONECTANDO…';
-    } else { // idle
+    } else {
       $('play-ico').textContent = '▶'; $('play-txt').textContent = 'PLAY';
       play.classList.remove('on','connecting');
       stop.classList.add('dim');
@@ -396,7 +332,7 @@
   }
   $('play').onclick = ()=>{
     if(audioState === 'idle'){
-      setAudioState('connecting');                 // instant feedback — don't wait for the buffer
+      setAudioState('connecting');
       audio.play().catch(()=> setAudioState('idle'));
     }
   };
@@ -404,7 +340,6 @@
   audio.addEventListener('playing', ()=> setAudioState('playing'));
   audio.addEventListener('pause',   ()=> setAudioState('idle'));
 
-  // Media Session API — lock-screen artwork + ⏯
   let metaTitle='', metaArtist='';
   function updateMediaMeta(){
     if(!('mediaSession' in navigator)) return;
@@ -418,7 +353,6 @@
     navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
   }
 
-  // live-stream resilience
   let reconnectTimer = null;
   function reconnectStream(){
     if(reconnectTimer) return;
@@ -434,7 +368,6 @@
   audio.addEventListener('error', reconnectStream);
   audio.addEventListener('ended', reconnectStream);
 
-  // collapsible sections — click header toggles .collapsed on the row
   document.querySelectorAll('.collapsible > .head').forEach(h=>{
     h.addEventListener('click', ()=> h.parentElement.classList.toggle('collapsed'));
   });
@@ -460,36 +393,36 @@
       }
       lastTitle = c.title;
     }
-      metaTitle = c.title||''; metaArtist = c.artist||'';
-      $('title').textContent = (metaTitle||'—').toUpperCase();
-      $('artist').textContent = metaArtist;
-      $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
-      const rs = j.requests||[];
-      if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
-      else { $('reqwrap').style.display='none'; }
+    metaTitle = c.title||''; metaArtist = c.artist||'';
+    $('title').textContent = (metaTitle||'—').toUpperCase();
+    $('artist').textContent = metaArtist;
+    $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
+    const rs = j.requests||[];
+    if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
+    else { $('reqwrap').style.display='none'; }
 
-      startedAt = j.startedAt ? Date.parse(j.startedAt) : null;
-      duration = (typeof c.duration === 'number') ? c.duration : null;
+    startedAt = j.startedAt ? Date.parse(j.startedAt) : null;
+    duration = (typeof c.duration === 'number') ? c.duration : null;
 
-      const l = (typeof j.listeners === 'number') ? j.listeners : 0;
-      $('listeners').style.display = l>0 ? '' : 'none';
-      $('listeners-count').textContent = l;
+    const l = (typeof j.listeners === 'number') ? j.listeners : 0;
+    $('listeners').style.display = l>0 ? '' : 'none';
+    $('listeners-count').textContent = l;
 
-      const h = j.history||[];
-      if(h.length){
-        $('history').style.display='';
-        $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('');
-      } else { $('history').style.display='none'; }
+    const h = j.history||[];
+    if(h.length){
+      $('history').style.display='';
+      $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('');
+    } else { $('history').style.display='none'; }
 
-      if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
-      updateMediaMeta();
-      tickProgress();
+    if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
+    updateMediaMeta();
+    tickProgress();
   }
+
   async function refresh(){
     try{ const j = await fetch('/now-playing').then(r=>r.json()); applyNowPlaying(j); }catch(_){}
   }
 
-  // DJ speech + request log — newest first, color-coded by tag.
   async function refreshDJLog(){
     try{
       const txt = await fetch('/dj-log').then(r=>r.text());
@@ -497,7 +430,6 @@
       const pre = $('djlog-body');
       if(!lines.length){ pre.innerHTML = '<span class="empty">Todavía no habló el locutor…</span>'; return; }
       pre.innerHTML = lines.reverse().slice(0,120).map(ln=>{
-        // "HH:MM:SS [TAG] text" → tag colored
         const m = ln.match(/^(\d\d:\d\d:\d\d)\s*\[(DJ|PEDIDO|HORA)\]\s*(.*)$/);
         if(!m) return esc(ln);
         return esc(m[1])+' <b>['+m[2]+']</b> '+esc(m[3]);
@@ -515,7 +447,6 @@
     }).catch(()=>{ $('cover').classList.remove('has'); $('cover').style.backgroundImage=''; });
   }
 
-  // side A/B flip — rotates cassette to edge-on, swaps side, resets tape, rotates back
   function flipCassette(){
     const fp = $('flipper');
     if(!fp) return;
@@ -533,6 +464,7 @@
       fp.style.transform = 'rotateY(0deg)';
     }, 380);
   }
+
   function tickProgress(){
     if(!startedAt || !duration){ $('prog').style.display='none'; syncReels(batchIdx / BATCH_SIZE); return; }
     $('prog').style.display='';
@@ -542,80 +474,93 @@
     $('elapsed').textContent = fmt(el);
     $('dur-total').textContent = fmt(duration);
   }
-  // sync tape reels + progress with BATCH position (p = 0→1 across entire tanda)
-  // Area conservation: πr² changes linearly (constant tape speed = constant area transfer)
-  // R_L = √(Rmax² - p·(Rmax²-Rmin²)), R_R = √(Rmin² + p·(Rmax²-Rmin²))
-  // ω = v/r → duration ∝ radius (smaller reel spins faster)
+
+  // d1/d2 are pile DIAMETERS (--r1/--r2 = width/height). Divided by 2 for tangent radius.
   function syncReels(p){
     const cs = getComputedStyle(document.documentElement);
-    const rMax = parseFloat(cs.getPropertyValue('--r-max')) || 60;
-    const rMin = parseFloat(cs.getPropertyValue('--r-min')) || 16;
-    const rSqDelta = rMax*rMax - rMin*rMin;
-    const r1 = Math.sqrt(Math.max(0, rMax*rMax - p * rSqDelta));
-    const r2 = Math.sqrt(rMin*rMin + p * rSqDelta);
+    const dMax = parseFloat(cs.getPropertyValue('--r-max')) || 86;
+    const dMin = parseFloat(cs.getPropertyValue('--r-min')) || 26;
+    const dSqDelta = dMax*dMax - dMin*dMin;
+    const d1 = Math.sqrt(Math.max(0, dMax*dMax - p * dSqDelta));
+    const d2 = Math.sqrt(dMin*dMin + p * dSqDelta);
     const baseDur = 2.8;
     const root = document.documentElement.style;
     root.setProperty('--fill', p.toFixed(4));
-    root.setProperty('--r1', r1.toFixed(1)+'px');
-    root.setProperty('--r2', r2.toFixed(1)+'px');
-    root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
-    root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
-    // r1/r2 are pile DIAMETERS (--r1 = width); tangent calc needs radius
-    updateTapePath(r1/2, r2/2);
+    root.setProperty('--r1', d1.toFixed(1)+'px');
+    root.setProperty('--r2', d2.toFixed(1)+'px');
+    root.setProperty('--omega1', (baseDur * d1 / dMax).toFixed(2)+'s');
+    root.setProperty('--omega2', (baseDur * d2 / dMax).toFixed(2)+'s');
+
+    updateTapePath(d1 / 2, d2 / 2);
     const layer = document.querySelector('.tape-layer');
     if(layer) layer.classList.toggle('leader', p < 0.05 || p > 0.95);
   }
-  // ── Tape path geometry: dynamic 7-point SVG path computed from DOM positions
-  // P1: left reel outer tangent → P2: guide-L → P3: cap-L → P4: head → P5: cap-R → P6: guide-R → P7: right reel outer tangent
-  // Tangent points computed via trig: tape exits reel circle where line to guide is tangent.
-  function elCenter(el, zone){
+
+  // ── Geometry helpers ──
+  function getCenter(el, zone) {
     if(!el) return null;
     const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
-    return { x: r.left+r.width/2-z.left, y: r.top+r.height/2-z.top };
+    return { x: r.left + r.width/2 - z.left, y: r.top + r.height/2 - z.top };
   }
-  // top-center of element: tape contacts the TOP edge of mech parts (comes from above)
-  function elTop(el, zone){
+  function getTopPoint(el, zone) {
     if(!el) return null;
     const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
-    return { x: r.left+r.width/2-z.left, y: r.top-z.top };
+    return { x: r.left + r.width/2 - z.left, y: r.top - z.top };
   }
-  function tangentPt(c, rad, t){
-    const dx=t.x-c.x, dy=t.y-c.y, d=Math.hypot(dx,dy);
-    if(d <= rad*1.05) return { x:c.x+rad*dx/(d||1), y:c.y+rad*dy/(d||1) };
-    const a=Math.atan2(dy,dx), b=Math.acos(rad/d);
-    const p1={x:c.x+rad*Math.cos(a+b),y:c.y+rad*Math.sin(a+b)};
-    const p2={x:c.x+rad*Math.cos(a-b),y:c.y+rad*Math.sin(a-b)};
-    // pick outer tangent (same horizontal side as target relative to center)
-    return (dx<0 ? p1.x<=p2.x : p1.x>=p2.x) ? p1 : p2;
+
+  // Outer tangent point on circle (c, rad) toward target t.
+  // acos(rad/dist) formula: two candidates at alpha ± gamma, pick outer by dx sign.
+  // (Gemini's asin formula gave wrong tangent for left reel — verified numerically.)
+  function getOuterTangent(c, rad, t, isLeft) {
+    const dx = t.x - c.x, dy = t.y - c.y, d = Math.hypot(dx, dy);
+    if(d <= rad * 1.05) return { x: c.x + rad * dx/(d||1), y: c.y + rad * dy/(d||1) };
+    const a = Math.atan2(dy, dx), g = Math.acos(rad / d);
+    const c1 = { x: c.x + rad * Math.cos(a + g), y: c.y + rad * Math.sin(a + g) };
+    const c2 = { x: c.x + rad * Math.cos(a - g), y: c.y + rad * Math.sin(a - g) };
+    return (dx < 0 ? c1.x <= c2.x : c1.x >= c2.x) ? c1 : c2;
   }
-  const rnd = n => Math.round(n*10)/10;
+
+  const rnd = n => Math.round(n * 10) / 10;
+
+  // Tape path: tangent → guide-L → Q-curve to bottom → flat across head → Q-curve up → guide-R → tangent.
+  // Q (quadratic Bézier) curves smoothly bend the tape around guide pins.
   function updateTapePath(r1, r2){
-    const zone = document.querySelector('.tape-zone');
+    const zone = $('tapeZone');
     if(!zone) return;
-    if(r1===undefined){
+
+    if(r1 === undefined){
       const cs = getComputedStyle(document.documentElement);
-      r1 = (parseFloat(cs.getPropertyValue('--r1'))||60)/2;
-      r2 = (parseFloat(cs.getPropertyValue('--r2'))||16)/2;
+      r1 = (parseFloat(cs.getPropertyValue('--r1')) || 86) / 2;
+      r2 = (parseFloat(cs.getPropertyValue('--r2')) || 26) / 2;
     }
-    const cL = elCenter(document.querySelector('.reel-hole.l'), zone);
-    const cR = elCenter(document.querySelector('.reel-hole.r'), zone);
-    const guideL = elTop(document.querySelector('.mech-guide.l'), zone);
-    const capL = elTop(document.querySelector('.mech-cap.l'), zone);
-    const head = elTop(document.querySelector('.mech-head'), zone);
-    const capR = elTop(document.querySelector('.mech-cap.r'), zone);
-    const guideR = elTop(document.querySelector('.mech-guide.r'), zone);
-    if(!cL||!cR||!guideL||!guideR) return;
-    const p1 = tangentPt(cL, r1, guideL);
-    const p7 = tangentPt(cR, r2, guideR);
-    const pts = [p1, guideL, capL, head, capR, guideR, p7].filter(Boolean);
-    const d = 'M' + pts.map(p => rnd(p.x)+','+rnd(p.y)).join(' L');
-    const tp = document.getElementById('tapePath');
-    const ts = document.getElementById('tapeShadow');
+
+    const cL = getCenter(document.querySelector('.reel-hole.l'), zone);
+    const cR = getCenter(document.querySelector('.reel-hole.r'), zone);
+    const gL = getCenter(document.querySelector('.mech-guide.l'), zone);
+    const gR = getCenter(document.querySelector('.mech-guide.r'), zone);
+    const head = getTopPoint(document.querySelector('.mech-head'), zone);
+
+    if(!cL || !cR || !gL || !gR || !head) return;
+
+    const pL = getOuterTangent(cL, r1, gL, true);
+    const pR = getOuterTangent(cR, r2, gR, false);
+    const yBottom = head.y + 1;
+
+    const d = `M ${rnd(pL.x)},${rnd(pL.y)} ` +
+              `L ${rnd(gL.x)},${rnd(gL.y - 3)} ` +
+              `Q ${rnd(gL.x)},${rnd(yBottom)} ${rnd(gL.x + 8)},${rnd(yBottom)} ` +
+              `L ${rnd(gR.x - 8)},${rnd(yBottom)} ` +
+              `Q ${rnd(gR.x)},${rnd(yBottom)} ${rnd(gR.x)},${rnd(gR.y - 3)} ` +
+              `L ${rnd(pR.x)},${rnd(pR.y)}`;
+
+    const tp = $('tapePath');
+    const ts = $('tapeShadow');
     if(tp) tp.setAttribute('d', d);
     if(ts) ts.setAttribute('d', d);
   }
-  syncReels(0); // set initial state on load
-  requestAnimationFrame(updateTapePath); // compute path after first layout
+
+  syncReels(0);
+  requestAnimationFrame(updateTapePath);
   window.addEventListener('resize', updateTapePath);
 
   refresh();
@@ -623,7 +568,7 @@
   const es = new EventSource('events');
   es.onmessage = e => { try{ applyNowPlaying(JSON.parse(e.data)); }catch(_){} };
   setInterval(tickProgress, 1000);
-  setInterval(refreshDJLog, 12000);   // keep the locutor feed fresh
+  setInterval(refreshDJLog, 12000);
 </script>
 </body>
 </html>
