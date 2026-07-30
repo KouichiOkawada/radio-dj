@@ -46,55 +46,83 @@
   .playing .onair{ background:var(--onair); color:#fff; }
   .playing .led{ border-color:#fff; }
 
-  /* cassette */
-  .cass{ background:var(--shell); padding:18px 18px 16px; }
-  .window{ display:flex; align-items:center; gap:0; }
-  .rw{ width:88px; height:88px; border-radius:50%; background:var(--window);
-    border:3px solid #3a2f25; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
-  .reel{ width:66px; height:66px; border-radius:50%; position:relative;
-    background:radial-gradient(circle, var(--reel) 0 18%, #6e5530 19% 22%, var(--reel) 23%);
-    box-shadow:inset 0 0 0 3px #4a3a22; }
-  .reel::before{ content:""; position:absolute; inset:0; border-radius:50%;
-    background:conic-gradient(from 0deg,
-      #221c16 0 30deg,transparent 0 60deg,#221c16 0 90deg,transparent 0 120deg,
-      #221c16 0 150deg,transparent 0 180deg,#221c16 0 210deg,transparent 0 240deg,
-      #221c16 0 270deg,transparent 0 300deg,#221c16 0 330deg,transparent 0 360deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 16px,#000 17px);
-            mask:radial-gradient(circle,transparent 0 16px,#000 17px); }
-  .playing .reel{ animation:spin 2.6s linear infinite; }
-  .playing .reel:last-child{ animation-duration:3.2s; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
-  .tape{ flex:1 1 auto; height:10px; background:#3a2f25; margin:0 6px;
-    border-top:2px solid #5a4a36; border-bottom:2px solid #1a1410; }
-  .teeth{ display:flex; justify-content:space-between; padding:10px 6px 0; }
-  .teeth i{ width:8px; height:14px; background:#3a2f25; display:block; }
+  /* ── CASSETTE — semi-transparent shell, real anatomy ── */
+  .cass{
+    background:linear-gradient(165deg,rgba(54,43,34,.94),rgba(16,12,9,.97));
+    border:3px solid #0a0805; border-radius:13px; padding:0 0 14px; position:relative;
+    box-shadow:6px 6px 0 var(--line), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  /* corner screws */
+  .scr{ position:absolute; width:10px; height:10px; border-radius:50%; z-index:7;
+    background:radial-gradient(circle at 35% 35%,#c9a45a,#6e5530 60%,#332618);
+    box-shadow:0 0 0 1.5px #0a0805; }
+  .scr.tl{top:8px;left:8px}.scr.tr{top:8px;right:8px}
+  .scr.bl{bottom:8px;left:8px}.scr.br{bottom:8px;right:8px}
 
-  /* now playing sticker */
-  .now{ margin-top:14px; background:var(--paper); border:2px solid #000;
-    padding:12px 14px; transform:rotate(-.5deg); }
+  /* top label — paper sticker with the track info */
+  .label{ margin:18px 20px 0; padding:11px 13px;
+    background:var(--paper); border:2px solid #0a0805; border-radius:4px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.35); }
   .now-row{ display:flex; gap:12px; align-items:stretch; }
   .now-text{ flex:1; min-width:0; }
-  .cover{ width:64px; height:64px; flex:0 0 auto; background:#3a2f25 center/cover no-repeat;
-    border:2px solid #000; display:none; }
+  .cover{ width:60px; height:60px; flex:0 0 auto; background:#3a2f25 center/cover no-repeat;
+    border:2px solid #000; border-radius:2px; display:none; }
   .cover.has{ display:block; }
-  .k{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--soft); font-weight:800; }
-  .title{ font-size:18px; font-weight:900; text-transform:uppercase; margin-top:4px; display:flex; gap:10px; align-items:center; }
-  .eq{ display:inline-flex; gap:3px; height:18px; align-items:flex-end; }
+  .k{ font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--soft); font-weight:800; }
+  .title{ font-size:17px; font-weight:900; text-transform:uppercase; margin-top:4px;
+    display:flex; gap:9px; align-items:center; }
+  .title span:last-child{ overflow-wrap:anywhere; }
+  .eq{ display:inline-flex; gap:3px; height:18px; align-items:flex-end; flex-shrink:0; }
   .eq i{ width:4px; height:5px; background:var(--onair); display:block; }
   .playing .eq i{ animation:eq .7s steps(4) infinite alternate; }
   .eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}
   .eq i:nth-child(4){animation-delay:.36s}.eq i:nth-child(5){animation-delay:.48s}
   @keyframes eq{ to{ height:16px; } }
-  .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; }
-
-  .prog-wrap{ margin-top:10px; }
-  .prog{ height:12px; position:relative; background:#3a2f25; border:2px solid #000; overflow:hidden; }
+  .artist{ font-size:12px; color:var(--soft); margin-top:3px; font-weight:700; overflow-wrap:anywhere; }
+  .prog-wrap{ margin-top:9px; }
+  .prog{ height:11px; position:relative; background:#3a2f25; border:2px solid #000; overflow:hidden; }
   .prog-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background:var(--onair); }
   .prog-time{ display:flex; justify-content:space-between; margin-top:3px;
     font-size:9px; font-weight:900; letter-spacing:1px; color:var(--soft); font-family:monospace; }
 
+  /* reel window — dark glass showing two hubs + the tape */
+  .window{ margin:11px 20px 0; background:var(--window); border:2px solid #0a0805;
+    border-radius:7px; padding:16px 14px 14px; display:flex; align-items:center; gap:0;
+    box-shadow:inset 0 3px 9px rgba(0,0,0,.75); }
+  .reel-hole{ width:96px; height:96px; flex:0 0 auto; position:relative;
+    display:flex; align-items:center; justify-content:center; }
+  /* tape wound on hub — concentric brown rings. left reel = full, right = just started */
+  .pile{ position:absolute; border-radius:50%; z-index:1;
+    background:repeating-radial-gradient(circle,#3d2f1f 0 2px,#312517 2px 3.5px);
+    box-shadow:inset 0 0 5px rgba(0,0,0,.55),0 0 0 1px #0a0805; }
+  .pile.l{ width:82px; height:82px; }
+  .pile.r{ width:48px; height:48px; }
+  /* spinning hub — brass spool with 6 teeth, sits atop the tape pile */
+  .hub{ width:32px; height:32px; border-radius:50%; position:relative; z-index:2;
+    background:radial-gradient(circle,#1a1410 0 22%,#9a7e4e 23% 38%,var(--reel) 39% 52%,#6e5530 53%);
+    box-shadow:0 0 0 2px #4a3a22; }
+  .hub::before{ content:""; position:absolute; inset:-4px; border-radius:50%;
+    background:conic-gradient(from 0deg,
+      var(--reel) 0 26deg,transparent 0 60deg,var(--reel) 0 86deg,transparent 0 120deg,
+      var(--reel) 0 146deg,transparent 0 180deg,var(--reel) 0 206deg,transparent 0 240deg,
+      var(--reel) 0 266deg,transparent 0 300deg,var(--reel) 0 326deg,transparent 0 360deg);
+    -webkit-mask:radial-gradient(circle,transparent 0 13px,#000 14px);
+            mask:radial-gradient(circle,transparent 0 13px,#000 14px); }
+  .playing .hub{ animation:spin 2.4s linear infinite; }
+  .playing .hub:last-child{ animation-duration:3.4s; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  /* tape strip between the two reels */
+  .tape-strip{ flex:1; height:8px; margin:0 2px;
+    background:linear-gradient(#4a3a28,#2a1f15);
+    border-top:1px solid #5a4838; border-bottom:1px solid #100c09; }
+
+  /* alignment holes below the window */
+  .holes{ display:flex; justify-content:space-around; align-items:center; padding:10px 30px 0; }
+  .holes i{ width:7px; height:7px; border-radius:50%; background:#050302;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.04); }
+
   /* transport — physical deck keys living INSIDE the cassette */
-  .transport{ display:flex; gap:12px; margin-top:14px; }
+  .transport{ display:flex; gap:12px; margin:14px 20px 0; }
   .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer;
     font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px;
     color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
@@ -156,18 +184,22 @@
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
-    .cass{ padding:14px 14px 12px; }
-    .rw{ width:72px; height:72px; }
-    .reel{ width:54px; height:54px; }
+    .label,.window{ margin-left:16px; margin-right:16px; }
+    .reel-hole{ width:80px; height:80px; }
+    .pile.l{ width:68px; height:68px; } .pile.r{ width:40px; height:40px; }
+    .hub{ width:26px; height:26px; }
+    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 10px,#000 11px); mask:radial-gradient(circle,transparent 0 10px,#000 11px); }
     .title{ font-size:16px; }
     .cover{ width:54px; height:54px; }
   }
   @media (max-width:360px){
     .bar > *{ padding:9px 8px; letter-spacing:1px; font-size:12px; }
     .brand{ font-size:12px; }
-    .cass{ padding:12px 12px 10px; }
-    .rw{ width:64px; height:64px; }
-    .reel{ width:48px; height:48px; }
+    .label,.window{ margin-left:13px; margin-right:13px; }
+    .reel-hole{ width:68px; height:68px; }
+    .pile.l{ width:56px; height:56px; } .pile.r{ width:34px; height:34px; }
+    .hub{ width:22px; height:22px; }
+    .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 8px,#000 9px); mask:radial-gradient(circle,transparent 0 8px,#000 9px); }
     .title{ font-size:15px; gap:8px; }
     .stack{ gap:9px; }
   }
@@ -185,13 +217,9 @@
     </div>
 
     <div class="blk cass">
-      <div class="window">
-        <div class="rw"><div class="reel"></div></div>
-        <div class="tape"></div>
-        <div class="rw"><div class="reel"></div></div>
-      </div>
-      <div class="teeth"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="now">
+      <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i>
+      <!-- top label: cover + track info -->
+      <div class="label">
         <div class="now-row">
           <div class="cover" id="cover"></div>
           <div class="now-text">
@@ -208,8 +236,15 @@
           <div class="prog-time"><span id="elapsed">0:00</span><span id="dur-total">0:00</span></div>
         </div>
       </div>
-
-      <!-- transport keys, integrated into the deck -->
+      <!-- reel window: two hubs + tape (left reel = full, right = started) -->
+      <div class="window">
+        <div class="reel-hole"><div class="pile l"></div><div class="hub"></div></div>
+        <div class="tape-strip"></div>
+        <div class="reel-hole"><div class="pile r"></div><div class="hub"></div></div>
+      </div>
+      <!-- alignment holes -->
+      <div class="holes"><i></i><i></i><i></i><i></i><i></i></div>
+      <!-- transport keys -->
       <div class="transport">
         <button class="t-play" id="play"><span id="play-ico">▶</span> <span id="play-txt">PLAY</span></button>
         <button class="t-stop dim" id="stop">■ STOP</button>
