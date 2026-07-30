@@ -16,7 +16,7 @@
     --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
     --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
     --hist:#9a7b3e;
-    --fill:0; --pmax:54px; --pmin:15px;
+    --fill:0; --r-max:60px; --r-min:16px; --r1:60px; --r2:16px; --omega1:2.8s; --omega2:0.75s;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100%}
@@ -100,18 +100,17 @@
   .reel-area{ flex:1; min-width:0; }
   .reel-row{ display:flex; align-items:center; gap:0; padding:6px;
     background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; }
-  .reel-hole{ width:64px; height:64px; flex:0 0 auto; position:relative;
+  .reel-hole{ width:72px; height:72px; flex:0 0 auto; position:relative;
     display:flex; align-items:center; justify-content:center; }
-  /* tape wound on hub — concentric brown rings. Size driven by --fill (0→1):
-     left pile SHRINKS, right pile GROWS as the song plays */
+  /* tape wound on hub — concentric brown rings. Radius set by JS via --r1/--r2
+     using physics: r ∝ √(tape amount). Left shrinks, right grows. */
   .pile{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
     border-radius:50%; z-index:1;
     background:repeating-radial-gradient(circle,#241a10 0 1.5px,#3a2c1c 1.5px 3px);
-    box-shadow:0 0 0 1px #100a05; transition:width .4s linear,height .4s linear; }
-  .pile.l{ width:calc(var(--pmax) - (var(--pmax) - var(--pmin)) * var(--fill,0));
-            height:calc(var(--pmax) - (var(--pmax) - var(--pmin)) * var(--fill,0)); }
-  .pile.r{ width:calc(var(--pmin) + (var(--pmax) - var(--pmin)) * var(--fill,0));
-            height:calc(var(--pmin) + (var(--pmax) - var(--pmin)) * var(--fill,0)); }
+    box-shadow:0 0 0 1px #100a05; transition:width .6s linear,height .6s linear; }
+  .pile.l{ width:var(--r1,60px); height:var(--r1,60px); }
+  .pile.r{ width:var(--r2,16px); height:var(--r2,16px); }
+  .no-trans .pile{ transition:none !important; }
   /* spinning hub — cream/brass spool with 6 teeth, sits atop the tape pile */
   .hub{ width:24px; height:24px; border-radius:50%; position:relative; z-index:2;
     background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%);
@@ -123,12 +122,17 @@
       #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
     -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px);
             mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
-  .playing .hub{ animation:spin 2.4s linear infinite; }
-  .playing .hub:last-child{ animation-duration:3.4s; }
+  /* reels always spin — it's a radio, always broadcasting.
+     ω = v/r → duration ∝ radius (smaller reel spins faster). Both clockwise. */
+  .hub.l{ animation:spin var(--omega1,2.8s) linear infinite; }
+  .hub.r{ animation:spin var(--omega2,2.8s) linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  .tape-strip{ flex:1; height:6px; margin:0 2px;
-    background:linear-gradient(#3d2f1f,#241a10);
-    border-top:1px solid #5a4a36; border-bottom:1px solid #100c09; border-radius:1px; }
+  /* tape strip — thick, with flowing texture (always moving left→right) */
+  .tape-strip{ flex:1; height:10px; margin:0 3px;
+    background:repeating-linear-gradient(90deg,#3d2f1f 0 6px,#2a1f10 6px 12px);
+    border-top:1px solid #5a4a36; border-bottom:1px solid #100c09; border-radius:1px;
+    animation:tapeFlow .4s linear infinite; }
+  @keyframes tapeFlow{ to{ background-position:12px 0; } }
   /* gauge — tick marks + advancing dot = progress indicator */
   .gauge{ margin-top:6px; height:12px; position:relative; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
@@ -217,8 +221,8 @@
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
-    :root{ --pmax:46px; --pmin:13px; }
-    .reel-hole{ width:56px; height:56px; }
+    :root{ --r-max:50px; --r-min:13px; }
+    .reel-hole{ width:62px; height:62px; }
     .hub{ width:21px; height:21px; }
     .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 8px,#000 9px); mask:radial-gradient(circle,transparent 0 8px,#000 9px); }
     .side-letter{ font-size:26px; }
@@ -228,8 +232,8 @@
   @media (max-width:360px){
     .bar > *{ padding:9px 8px; letter-spacing:1px; font-size:12px; }
     .brand{ font-size:12px; }
-    :root{ --pmax:38px; --pmin:11px; }
-    .reel-hole{ width:46px; height:46px; }
+    :root{ --r-max:42px; --r-min:11px; }
+    .reel-hole{ width:52px; height:52px; }
     .hub{ width:17px; height:17px; }
     .hub::before{ -webkit-mask:radial-gradient(circle,transparent 0 6px,#000 7px); mask:radial-gradient(circle,transparent 0 6px,#000 7px); }
     .side-letter{ font-size:22px; }
@@ -274,9 +278,9 @@
               <div class="side-letter" id="side-label">A</div>
               <div class="reel-area">
                 <div class="reel-row">
-                  <div class="reel-hole"><div class="pile l" id="pile-l"></div><div class="hub"></div></div>
+                  <div class="reel-hole"><div class="pile l" id="pile-l"></div><div class="hub l"></div></div>
                   <div class="tape-strip"></div>
-                  <div class="reel-hole"><div class="pile r" id="pile-r"></div><div class="hub"></div></div>
+                  <div class="reel-hole"><div class="pile r" id="pile-r"></div><div class="hub r"></div></div>
                 </div>
                 <div class="gauge" id="prog" style="display:none">
                   <div class="gauge-track"></div>
@@ -501,7 +505,10 @@
       sideA = !sideA;
       const sl = $('side-label');
       if(sl) sl.textContent = sideA ? 'A' : 'B';
+      const deck = $('deck');
+      deck.classList.add('no-trans');
       syncReels(0);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>deck.classList.remove('no-trans')));
       fp.style.transition = 'transform .38s cubic-bezier(.3,.4,.5,1)';
       fp.style.transform = 'rotateY(0deg)';
     }, 380);
@@ -516,9 +523,24 @@
     $('dur-total').textContent = fmt(duration);
   }
   // sync tape reels + progress with song position (p = 0→1)
+  // Physics: radius ∝ √(tape amount), angular velocity ω = v/r
   function syncReels(p){
-    document.documentElement.style.setProperty('--fill', p.toFixed(4));
+    const cs = getComputedStyle(document.documentElement);
+    const rMax = parseFloat(cs.getPropertyValue('--r-max')) || 60;
+    const rMin = parseFloat(cs.getPropertyValue('--r-min')) || 16;
+    // left reel has (1-p) of the tape, right has p — r = rMin + (rMax-rMin)*√(amount)
+    const r1 = rMin + (rMax - rMin) * Math.sqrt(Math.max(0, 1 - p));
+    const r2 = rMin + (rMax - rMin) * Math.sqrt(Math.max(0, p));
+    // ω = v/r → duration ∝ radius (bigger reel = slower spin)
+    const baseDur = 2.8;
+    const root = document.documentElement.style;
+    root.setProperty('--fill', p.toFixed(4));
+    root.setProperty('--r1', r1.toFixed(1)+'px');
+    root.setProperty('--r2', r2.toFixed(1)+'px');
+    root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
+    root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
   }
+  syncReels(0); // set initial state on load
 
   refresh();
   refreshDJLog();
