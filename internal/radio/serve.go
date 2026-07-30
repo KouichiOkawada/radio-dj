@@ -31,6 +31,8 @@ type Segment struct {
 	IsVoice  bool
 	LiveTime bool // voice generated at air-time (clock skill) — no pre-baked Path
 	Meta     library.Track // valid when !IsVoice
+	Text     string        // DJ speech text — logged at air-time, not build-time
+	Req      string        // request text that matched this track — air-time log
 }
 
 // djLogPath is set in Serve(); logDJ appends DJ speech, requests and the
@@ -122,19 +124,24 @@ func Serve(cfg config.Config) error {
 	for segs := range prepared {
 		tandaN++
 		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
-		pendingVoice := ""
+		pendingVoicePath := ""
+		pendingVoiceText := ""
 		pendingLiveTime := false
 		for i, seg := range segs {
 			if seg.IsVoice {
 				if seg.LiveTime {
 					pendingLiveTime = true // clock skill — voice built at air-time
 				} else {
-					pendingVoice = seg.Path // overlay over the next song (live ducking)
+					pendingVoicePath = seg.Path // overlay over the next song (live ducking)
+					pendingVoiceText = seg.Text
 				}
 				continue
 			}
 			st.SetCurrent(toStatus(seg.Meta), toStatus(nextTrack(segs, i)))
 			log.Printf("▶ %s — %s", seg.Meta.Title, seg.Meta.Artist)
+			if seg.Req != "" {
+				logDJ("PEDIDO", seg.Req) // air-time: the requested track starts now
+			}
 			if pendingLiveTime {
 				// clock skill: generate the voice NOW so the hour isn't stale.
 				// Song is already playing (ducked via Interject), so GLM+TTS
@@ -152,11 +159,14 @@ func Serve(cfg config.Config) error {
 						log.Printf("[dj] interject: %v", err)
 					}
 				}()
-			} else if pendingVoice != "" {
-				vf := pendingVoice
-				pendingVoice = ""
+			} else if pendingVoicePath != "" {
+				vf := pendingVoicePath
+				vt := pendingVoiceText
+				pendingVoicePath = ""
+				pendingVoiceText = ""
 				go func() {
 					time.Sleep(700 * time.Millisecond) // let the intro land
+					logDJ("DJ", vt) // air-time: the intro overlays the song now
 					if err := streamer.Interject(vf); err != nil {
 						log.Printf("[dj] interject: %v", err)
 					}
@@ -184,8 +194,9 @@ func Serve(cfg config.Config) error {
 					_ = streamer.Interject(vf)
 				}
 			}()
-		} else if pendingVoice != "" {
-			if err := streamer.Interject(pendingVoice); err != nil {
+		} else if pendingVoicePath != "" {
+			logDJ("DJ", pendingVoiceText)
+			if err := streamer.Interject(pendingVoicePath); err != nil {
 				log.Printf("[dj] interject: %v", err)
 			}
 		}
@@ -202,9 +213,8 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			return
 		}
 		if vf, verr := vox.Speak(text); verr == nil {
-			segs = append(segs, Segment{Path: vf, IsVoice: true})
-			log.Printf("[dj] %s", text)
-			logDJ("DJ", text)
+			segs = append(segs, Segment{Path: vf, IsVoice: true, Text: text})
+			log.Printf("[dj] %s", text) // stderr (debug); the air-time log fires in the consumer
 		} else {
 			log.Printf("[dj] voice: %v", verr)
 		}
@@ -227,7 +237,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			reqCtx = append(reqCtx, dj.Req{Query: req.Text, Title: t.Title, Artist: t.Artist})
 			matched++
 			log.Printf("[request] %q → %s — %s", req.Text, t.Title, t.Artist)
-			logDJ("PEDIDO", fmt.Sprintf("%q → %s — %s", req.Text, t.Title, t.Artist))
+			segs[len(segs)-1].Req = fmt.Sprintf("%q → %s — %s", req.Text, t.Title, t.Artist)
 		} else {
 			log.Printf("[request] no match %q", req.Text)
 		}
