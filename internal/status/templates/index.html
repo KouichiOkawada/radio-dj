@@ -122,6 +122,12 @@
       #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
     -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px);
             mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
+  /* red leader wedge — secures tape to hub, rotates with spin */
+  .hub::after{ content:""; position:absolute; left:50%; top:50%;
+    width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+    background:conic-gradient(#d6453a 0 50deg,transparent 50deg);
+    -webkit-mask:radial-gradient(circle,transparent 0 2.5px,#000 3px);
+            mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); }
   /* reels always spin — it's a radio, always broadcasting.
      ω = v/r → duration ∝ radius (smaller reel spins faster). Both clockwise. */
   .hub.l{ animation:spin var(--omega1,2.8s) linear infinite; }
@@ -133,6 +139,10 @@
     border-top:1px solid #5a4a36; border-bottom:1px solid #100c09; border-radius:1px;
     animation:tapeFlow .4s linear infinite; }
   @keyframes tapeFlow{ to{ background-position:12px 0; } }
+  /* leader tape — translucent clear plastic at start/end of side */
+  .tape-strip.leader{
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.45) 0 6px,rgba(200,200,200,.2) 6px 12px);
+    border-color:rgba(255,255,255,.3); }
   /* gauge — tick marks + advancing dot = progress indicator */
   .gauge{ margin-top:6px; height:12px; position:relative; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
@@ -523,15 +533,16 @@
     $('dur-total').textContent = fmt(duration);
   }
   // sync tape reels + progress with song position (p = 0→1)
-  // Physics: radius ∝ √(tape amount), angular velocity ω = v/r
+  // Area conservation: πr² changes linearly (constant tape speed = constant area transfer)
+  // R_L = √(Rmax² - p·(Rmax²-Rmin²)), R_R = √(Rmin² + p·(Rmax²-Rmin²))
+  // ω = v/r → duration ∝ radius (smaller reel spins faster)
   function syncReels(p){
     const cs = getComputedStyle(document.documentElement);
     const rMax = parseFloat(cs.getPropertyValue('--r-max')) || 60;
     const rMin = parseFloat(cs.getPropertyValue('--r-min')) || 16;
-    // left reel has (1-p) of the tape, right has p — r = rMin + (rMax-rMin)*√(amount)
-    const r1 = rMin + (rMax - rMin) * Math.sqrt(Math.max(0, 1 - p));
-    const r2 = rMin + (rMax - rMin) * Math.sqrt(Math.max(0, p));
-    // ω = v/r → duration ∝ radius (bigger reel = slower spin)
+    const rSqDelta = rMax*rMax - rMin*rMin;
+    const r1 = Math.sqrt(Math.max(0, rMax*rMax - p * rSqDelta));
+    const r2 = Math.sqrt(rMin*rMin + p * rSqDelta);
     const baseDur = 2.8;
     const root = document.documentElement.style;
     root.setProperty('--fill', p.toFixed(4));
@@ -539,6 +550,8 @@
     root.setProperty('--r2', r2.toFixed(1)+'px');
     root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
     root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
+    const ts = document.querySelector('.tape-strip');
+    if(ts) ts.classList.toggle('leader', p < 0.04 || p > 0.96);
   }
   syncReels(0); // set initial state on load
 
