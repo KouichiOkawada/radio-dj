@@ -278,7 +278,7 @@
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
     $('q').value='';
-    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); poll(); }catch(_){}
+    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); refresh(); }catch(_){}
   });
 
   // progress state — updated by poll(), ticked every second by tickProgress()
@@ -286,10 +286,8 @@
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 
-  async function poll(){
-    try{
-      const j = await fetch('/now-playing').then(r=>r.json());
-      const c = j.current||{};
+  function applyNowPlaying(j){
+    const c = j.current||{};
       metaTitle = c.title||''; metaArtist = c.artist||'';
       $('title').textContent = (metaTitle||'—').toUpperCase();
       $('artist').textContent = metaArtist;
@@ -316,7 +314,9 @@
       if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
       updateMediaMeta();
       tickProgress();
-    }catch(_){}
+  }
+  async function refresh(){
+    try{ const j = await fetch('/now-playing').then(r=>r.json()); applyNowPlaying(j); }catch(_){}
   }
 
   function loadCover(){
@@ -339,7 +339,10 @@
     $('dur-total').textContent = fmt(duration);
   }
 
-  poll(); setInterval(poll, 4000); setInterval(tickProgress, 1000);
+  refresh();
+  const es = new EventSource('events');
+  es.onmessage = e => { try{ applyNowPlaying(JSON.parse(e.data)); }catch(_){} };
+  setInterval(tickProgress, 1000);
 </script>
 </body>
 </html>

@@ -59,11 +59,12 @@ type Server struct {
 	icPw       string
 	icListeners int
 	icCacheT   time.Time
+	subs       map[chan NowPlaying]struct{} // SSE subscribers for /events
 }
 
 func New(stateDir string, needsSetup bool) *Server {
 	_ = os.MkdirAll(stateDir, 0o755)
-	return &Server{dir: stateDir, needsSetup: needsSetup}
+	return &Server{dir: stateDir, needsSetup: needsSetup, subs: map[chan NowPlaying]struct{}{}}
 }
 
 // SetCurrent publishes the current + next track (called by the radio loop as
@@ -86,6 +87,7 @@ func (s *Server) SetCurrent(cur, next Track) {
 	src := cur.Src
 	s.mu.Unlock()
 	s.persist()
+	go s.broadcast()
 	if src != "" {
 		go s.extractCover(src)
 	}
@@ -104,7 +106,26 @@ func (s *Server) AddRequest(text string) Request {
 	s.mu.Lock()
 	s.requests = append(s.requests, r)
 	s.mu.Unlock()
+	go s.broadcast()
 	return r
+}
+
+// broadcast pushes the current now-playing snapshot to every SSE subscriber.
+// Sends are non-blocking: a slow client is skipped and catches the next change.
+func (s *Server) broadcast() {
+	np := s.Current()
+	s.mu.RLock()
+	subs := make([]chan NowPlaying, 0, len(s.subs))
+	for ch := range s.subs {
+		subs = append(subs, ch)
+	}
+	s.mu.RUnlock()
+	for _, ch := range subs {
+		select {
+		case ch <- np:
+		default: // slow subscriber — drop, it'll catch the next broadcast
+		}
+	}
 }
 
 // DrainRequests returns and clears pending requests (the radio loop resolves
@@ -235,6 +256,43 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		_ = json.NewEncoder(w).Encode(s.Current())
+	})
+	// /events — Server-Sent Events: push now-playing the instant it changes.
+	// Replaces the client's 4s poll; gives instant metadata + native reconnect.
+	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		flusher, _ := w.(http.Flusher)
+		ch := make(chan NowPlaying, 8)
+		s.mu.Lock()
+		s.subs[ch] = struct{}{}
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			delete(s.subs, ch)
+			s.mu.Unlock()
+		}()
+		// initial snapshot so a fresh client doesn't wait for the next change
+		if b, err := json.Marshal(s.Current()); err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case np := <-ch:
+				if b, err := json.Marshal(np); err == nil {
+					fmt.Fprintf(w, "data: %s\n\n", b)
+					if flusher != nil {
+						flusher.Flush()
+					}
+				}
+			}
+		}
 	})
 	mux.HandleFunc("/cover", s.handleCover)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

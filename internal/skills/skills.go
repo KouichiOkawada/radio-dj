@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"radio-dj/internal/dj"
 	"radio-dj/internal/i18n"
@@ -49,23 +48,33 @@ func (p *Pool) prompt(kind string, kv map[string]string) string {
 }
 
 // Segue rotates through station-id → time → weather → curiosity → wiki.
-func (p *Pool) Segue(d *dj.DJ, t library.Track) string {
+// Returns the spoken text plus isTime=true when the clock skill is next: the
+// caller MUST generate that one at air-time (not in the producer), otherwise
+// the announced hour is stale by a whole tanda. See serve.go consumer loop.
+func (p *Pool) Segue(d *dj.DJ, t library.Track) (text string, isTime bool) {
 	kinds := []string{"station", "time", "weather", "curiosity", "wiki"}
 	k := kinds[p.i%len(kinds)]
 	p.i++
 	switch k {
 	case "station":
-		return d.Say(p.prompt("station-id", map[string]string{"station": p.station, "location": p.location}))
+		return d.Say(p.prompt("station-id", map[string]string{"station": p.station, "location": p.location})), false
 	case "time":
-		return d.Say(p.prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
+		// deferred — the clock is captured at air-time by the consumer.
+		return "", true
 	case "weather":
-		return p.weather(d)
+		return p.weather(d), false
 	case "curiosity":
-		return d.Say(p.prompt("curiosity", nil))
+		return d.Say(p.prompt("curiosity", nil)), false
 	case "wiki":
-		return d.SayWiki(t.Artist, t.Title)
+		return d.SayWiki(t.Artist, t.Title), false
 	}
-	return ""
+	return "", false
+}
+
+// Prompt fills a skill template with values (exported so the radio loop can
+// build the time prompt at air-time, after the producer deferred it).
+func (p *Pool) Prompt(kind string, kv map[string]string) string {
+	return p.prompt(kind, kv)
 }
 
 // Intro is the standard between-track presentation of the next song.

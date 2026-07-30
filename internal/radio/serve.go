@@ -25,9 +25,10 @@ import (
 
 // Segment is one item fed to the streamer: a DJ voice clip or a music track.
 type Segment struct {
-	Path    string
-	IsVoice bool
-	Meta    library.Track // valid when !IsVoice
+	Path     string
+	IsVoice  bool
+	LiveTime bool // voice generated at air-time (clock skill) — no pre-baked Path
+	Meta     library.Track // valid when !IsVoice
 }
 
 // Serve runs the station until fatally errored. The streamer is opened once
@@ -100,14 +101,35 @@ func Serve(cfg config.Config) error {
 		tandaN++
 		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
 		pendingVoice := ""
+		pendingLiveTime := false
 		for i, seg := range segs {
 			if seg.IsVoice {
-				pendingVoice = seg.Path // overlay over the next song (live ducking)
+				if seg.LiveTime {
+					pendingLiveTime = true // clock skill — voice built at air-time
+				} else {
+					pendingVoice = seg.Path // overlay over the next song (live ducking)
+				}
 				continue
 			}
 			st.SetCurrent(toStatus(seg.Meta), toStatus(nextTrack(segs, i)))
 			log.Printf("▶ %s — %s", seg.Meta.Title, seg.Meta.Artist)
-			if pendingVoice != "" {
+			if pendingLiveTime {
+				// clock skill: generate the voice NOW so the hour isn't stale.
+				// Song is already playing (ducked via Interject), so GLM+TTS
+				// latency (2-5s) hides under it — no dead air.
+				pendingLiveTime = false
+				go func() {
+					text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
+					vf, verr := vox.Speak(text)
+					if verr != nil {
+						log.Printf("[dj] time voice: %v", verr)
+						return
+					}
+					if err := streamer.Interject(vf); err != nil {
+						log.Printf("[dj] interject: %v", err)
+					}
+				}()
+			} else if pendingVoice != "" {
 				vf := pendingVoice
 				pendingVoice = ""
 				go func() {
@@ -131,7 +153,14 @@ func Serve(cfg config.Config) error {
 			}
 		}
 		// tail voice (e.g. outro with no song after it) — overlay over silence
-		if pendingVoice != "" {
+		if pendingLiveTime {
+			go func() {
+				text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
+				if vf, verr := vox.Speak(text); verr == nil {
+					_ = streamer.Interject(vf)
+				}
+			}()
+		} else if pendingVoice != "" {
 			if err := streamer.Interject(pendingVoice); err != nil {
 				log.Printf("[dj] interject: %v", err)
 			}
@@ -184,7 +213,12 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			if (*trackCount/cfg.DJEvery)%2 == 0 {
 				addVoice(skills.Intro(djx, t))
 			} else {
-				addVoice(pool.Segue(djx, t))
+				text, isTime := pool.Segue(djx, t)
+				if isTime {
+					segs = append(segs, Segment{IsVoice: true, LiveTime: true}) // defer the clock to air-time
+				} else {
+					addVoice(text)
+				}
 			}
 		}
 		addTrack(t)
