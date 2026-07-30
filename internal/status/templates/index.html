@@ -134,15 +134,15 @@
   .hub.r{ animation:spin var(--omega2,2.8s) linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   /* tape strip — thick, with flowing texture (always moving left→right) */
-  .tape-strip{ flex:1; height:10px; margin:0 3px;
-    background:repeating-linear-gradient(90deg,#3d2f1f 0 6px,#2a1f10 6px 12px);
-    border-top:1px solid #5a4a36; border-bottom:1px solid #100c09; border-radius:1px;
-    animation:tapeFlow .4s linear infinite; }
-  @keyframes tapeFlow{ to{ background-position:12px 0; } }
-  /* leader tape — translucent clear plastic at start/end of side */
-  .tape-strip.leader{
-    background:repeating-linear-gradient(90deg,rgba(255,255,255,.45) 0 6px,rgba(200,200,200,.2) 6px 12px);
-    border-color:rgba(255,255,255,.3); }
+  /* tape path — SVG curve: exits reels at center height, dips to guide
+     roller level, runs horizontal across the head, rises back up.
+     Semi-transparent + dash animation = visible tape movement. */
+  .tape-svg{ flex:1; height:28px; overflow:visible; z-index:0; }
+  .tape-path{ fill:none; stroke:rgba(45,30,18,0.7); stroke-width:7;
+    stroke-linecap:round; vector-effect:non-scaling-stroke;
+    stroke-dasharray:7 3.5; animation:tapeMove .35s linear infinite; }
+  .tape-svg.leader .tape-path{ stroke:rgba(255,240,230,0.4); }
+  @keyframes tapeMove{ to{ stroke-dashoffset:-10.5; } }
   /* gauge — tick marks + advancing dot = progress indicator */
   .gauge{ margin-top:6px; height:12px; position:relative; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
@@ -289,7 +289,7 @@
               <div class="reel-area">
                 <div class="reel-row">
                   <div class="reel-hole"><div class="pile l" id="pile-l"></div><div class="hub l"></div></div>
-                  <div class="tape-strip"></div>
+                  <svg class="tape-svg" viewBox="0 0 100 30" preserveAspectRatio="none"><path class="tape-path" d="M0,5 Q8,24 22,22 L78,22 Q92,24 100,5" /></svg>
                   <div class="reel-hole"><div class="pile r" id="pile-r"></div><div class="hub r"></div></div>
                 </div>
                 <div class="gauge" id="prog" style="display:none">
@@ -440,14 +440,17 @@
   });
 
   let startedAt = null, duration = null, coverTitle = null, coverURL = null;
-  let lastTitle = null, sideA = true;
+  let lastTitle = null, sideA = true, batchIdx = 0; const BATCH_SIZE = 8;
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 
   function applyNowPlaying(j){
     const c = j.current||{};
     if(c.title && c.title !== lastTitle){
-      if(lastTitle !== null) flipCassette();
+      if(lastTitle !== null){
+        batchIdx++;
+        if(batchIdx >= BATCH_SIZE){ flipCassette(); batchIdx = 0; }
+      }
       lastTitle = c.title;
     }
       metaTitle = c.title||''; metaArtist = c.artist||'';
@@ -524,15 +527,15 @@
     }, 380);
   }
   function tickProgress(){
-    if(!startedAt || !duration){ $('prog').style.display='none'; syncReels(0); return; }
+    if(!startedAt || !duration){ $('prog').style.display='none'; syncReels(batchIdx / BATCH_SIZE); return; }
     $('prog').style.display='';
     const el = (Date.now() - startedAt)/1000;
-    const p = Math.min(1, Math.max(0, el/duration));
-    syncReels(p);
+    const pSong = Math.min(1, Math.max(0, el/duration));
+    syncReels((batchIdx + pSong) / BATCH_SIZE);
     $('elapsed').textContent = fmt(el);
     $('dur-total').textContent = fmt(duration);
   }
-  // sync tape reels + progress with song position (p = 0→1)
+  // sync tape reels + progress with BATCH position (p = 0→1 across entire tanda)
   // Area conservation: πr² changes linearly (constant tape speed = constant area transfer)
   // R_L = √(Rmax² - p·(Rmax²-Rmin²)), R_R = √(Rmin² + p·(Rmax²-Rmin²))
   // ω = v/r → duration ∝ radius (smaller reel spins faster)
@@ -550,8 +553,8 @@
     root.setProperty('--r2', r2.toFixed(1)+'px');
     root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
     root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
-    const ts = document.querySelector('.tape-strip');
-    if(ts) ts.classList.toggle('leader', p < 0.04 || p > 0.96);
+    const svg = document.querySelector('.tape-svg');
+    if(svg) svg.classList.toggle('leader', p < 0.04 || p > 0.96);
   }
   syncReels(0); // set initial state on load
 
