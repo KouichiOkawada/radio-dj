@@ -560,7 +560,8 @@
     root.setProperty('--r2', r2.toFixed(1)+'px');
     root.setProperty('--omega1', (baseDur * r1 / rMax).toFixed(2)+'s');
     root.setProperty('--omega2', (baseDur * r2 / rMax).toFixed(2)+'s');
-    updateTapePath(r1, r2);
+    // r1/r2 are pile DIAMETERS (--r1 = width); tangent calc needs radius
+    updateTapePath(r1/2, r2/2);
     const layer = document.querySelector('.tape-layer');
     if(layer) layer.classList.toggle('leader', p < 0.05 || p > 0.95);
   }
@@ -571,6 +572,12 @@
     if(!el) return null;
     const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
     return { x: r.left+r.width/2-z.left, y: r.top+r.height/2-z.top };
+  }
+  // top-center of element: tape contacts the TOP edge of mech parts (comes from above)
+  function elTop(el, zone){
+    if(!el) return null;
+    const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
+    return { x: r.left+r.width/2-z.left, y: r.top-z.top };
   }
   function tangentPt(c, rad, t){
     const dx=t.x-c.x, dy=t.y-c.y, d=Math.hypot(dx,dy);
@@ -587,16 +594,16 @@
     if(!zone) return;
     if(r1===undefined){
       const cs = getComputedStyle(document.documentElement);
-      r1 = parseFloat(cs.getPropertyValue('--r1'))||60;
-      r2 = parseFloat(cs.getPropertyValue('--r2'))||16;
+      r1 = (parseFloat(cs.getPropertyValue('--r1'))||60)/2;
+      r2 = (parseFloat(cs.getPropertyValue('--r2'))||16)/2;
     }
     const cL = elCenter(document.querySelector('.reel-hole.l'), zone);
     const cR = elCenter(document.querySelector('.reel-hole.r'), zone);
-    const guideL = elCenter(document.querySelector('.mech-guide.l'), zone);
-    const capL = elCenter(document.querySelector('.mech-cap.l'), zone);
-    const head = elCenter(document.querySelector('.mech-head'), zone);
-    const capR = elCenter(document.querySelector('.mech-cap.r'), zone);
-    const guideR = elCenter(document.querySelector('.mech-guide.r'), zone);
+    const guideL = elTop(document.querySelector('.mech-guide.l'), zone);
+    const capL = elTop(document.querySelector('.mech-cap.l'), zone);
+    const head = elTop(document.querySelector('.mech-head'), zone);
+    const capR = elTop(document.querySelector('.mech-cap.r'), zone);
+    const guideR = elTop(document.querySelector('.mech-guide.r'), zone);
     if(!cL||!cR||!guideL||!guideR) return;
     const p1 = tangentPt(cL, r1, guideL);
     const p7 = tangentPt(cR, r2, guideR);
