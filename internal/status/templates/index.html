@@ -105,7 +105,7 @@
 
   .hub.l{ animation:spin var(--omega1,2.8s) linear infinite; }
   .hub.r{ animation:spin var(--omega2,2.8s) linear infinite; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes spin{ to{ transform:rotate(-360deg); } }
 
   .tape-layer{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
   .tape-layer .tape-shadow{ fill:none; stroke:#000; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; opacity:0.35; }
@@ -113,7 +113,7 @@
     stroke-dasharray:8 4; animation:tapeFlow .3s linear infinite; }
   .tape-layer.leader .tape-path{ stroke:rgba(255,245,230,0.6); }
   .tape-layer.leader .tape-shadow{ opacity:0.1; }
-  @keyframes tapeFlow{ to{ stroke-dashoffset:-12; } }
+  @keyframes tapeFlow{ to{ stroke-dashoffset:12; } }
 
   .gauge{ margin-top:6px; height:12px; position:relative; z-index:1; }
   .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
@@ -481,8 +481,8 @@
     const dMax = parseFloat(cs.getPropertyValue('--r-max')) || 86;
     const dMin = parseFloat(cs.getPropertyValue('--r-min')) || 26;
     const dSqDelta = dMax*dMax - dMin*dMin;
-    const d1 = Math.sqrt(Math.max(0, dMax*dMax - p * dSqDelta));
-    const d2 = Math.sqrt(dMin*dMin + p * dSqDelta);
+    const d1 = Math.sqrt(dMin*dMin + p * dSqDelta);
+    const d2 = Math.sqrt(Math.max(0, dMax*dMax - p * dSqDelta));
     const baseDur = 2.8;
     const root = document.documentElement.style;
     root.setProperty('--fill', p.toFixed(4));
