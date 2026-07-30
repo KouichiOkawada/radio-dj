@@ -87,10 +87,14 @@ func (s *Server) SetCurrent(cur, next Track) {
 	src := cur.Src
 	s.mu.Unlock()
 	s.persist()
-	go s.broadcast()
+	// extract cover SYNCHRONOUSLY before broadcasting: otherwise the SSE
+	// reaches the browser before ffmpeg rewrites cover.jpg, so /cover serves the
+	// previous track's art (always one track behind). ~50-200ms once per track
+	// — invisible, and streamer.Play hasn't started yet anyway.
 	if src != "" {
-		go s.extractCover(src)
+		s.extractCover(src)
 	}
+	go s.broadcast()
 }
 
 // MarkPlaying flips the on-air flag (decorative — the UI reads it to spin reels).
