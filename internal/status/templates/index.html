@@ -57,7 +57,7 @@
   /* ── Casete ── */
   .cass-wrap{ perspective:1600px; }
   .flipper{ transform-style:preserve-3d; will-change:transform; }
-  .cass{ display:block; width:100%; height:auto; filter:drop-shadow(6px 6px 0 var(--line)); }
+  .cass{ display:block; width:100%; height:auto; filter:drop-shadow(6px 6px 0 var(--line)); backface-visibility:hidden; }
 
   .tape-shadow{ fill:none; stroke:#000; stroke-width:3.4; opacity:.20; }
   .tape-body{ fill:none; stroke:#2b1f12; stroke-width:2.3; }
@@ -78,8 +78,6 @@
 
   /* ── Botonera tipo cassettera ── */
   .deck-panel{ margin-top:14px; background:#cfc7b5; border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); padding:10px 12px 12px; }
-  .deck-legend{ display:flex; justify-content:space-between; gap:6px; font-size:9px; font-weight:900; letter-spacing:1.5px; color:#4a4436; text-transform:uppercase; padding:0 2px 8px; }
-  .deck-legend span{ flex:1; text-align:center; }
   .keys{ display:flex; gap:8px; }
   .key{ flex:1; position:relative; border:0; background:none; padding:0; cursor:pointer; font-family:inherit;
     perspective:280px; -webkit-tap-highlight-color:transparent; }
@@ -348,9 +346,6 @@
       </div>
 
       <div class="deck-panel">
-        <div class="deck-legend">
-          <span>■ Stop</span><span>◀◀ F.Fwd</span><span>▶ Play</span><span>Rew ▶▶</span><span>● Rec</span>
-        </div>
         <div class="keys">
           <button class="key k-stop" id="k-stop" aria-label="Stop">
             <span class="cap"><span class="ico">■</span><span class="txt">Stop</span><span class="strip"></span></span>
@@ -505,7 +500,11 @@
   });
 
   let startedAt = null, duration = null, coverTitle = null, coverURL = null;
-  let lastTitle = null, sideA = true, batchIdx = 0; const BATCH_SIZE = 8;
+  const BATCH_SIZE = 8;
+  let lastTitle = null;
+  let sideA = (localStorage.getItem('rdj_side') !== 'B');
+  let batchIdx = parseInt(localStorage.getItem('rdj_batch') || '0', 10) || 0;
+  function saveState(){ try{ localStorage.setItem('rdj_side', sideA?'A':'B'); localStorage.setItem('rdj_batch', String(batchIdx)); }catch(_){} }
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 
@@ -515,6 +514,7 @@
       if(lastTitle !== null){
         batchIdx++;
         if(batchIdx >= BATCH_SIZE){ flipCassette(); batchIdx = 0; }
+        saveState();
       }
       lastTitle = c.title;
     }
@@ -587,15 +587,16 @@
     const fp = $('flipper');
     if(!fp) return;
     fp.style.transition = 'transform .4s cubic-bezier(.5,0,.7,.2)';
-    fp.style.transform = 'rotateY(90deg)';
+    fp.style.transform = 'rotateY(90deg) translateY(-6px)';
     setTimeout(()=>{
       sideA = !sideA;
       const letter = sideA ? 'A' : 'B';
       $('side-print').textContent = letter;
       $('paper-side').textContent = letter;
       angL = angR = 0; lastP = -1; applyReels(0);
-      fp.style.transition = 'transform .4s cubic-bezier(.3,.4,.5,1)';
-      fp.style.transform = 'rotateY(0deg)';
+      fp.style.transition = 'transform .4s cubic-bezier(.34,1.56,.64,1)';
+      fp.style.transform = 'rotateY(0deg) translateY(0)';
+      saveState();
     }, 400);
   }
 
@@ -702,7 +703,9 @@
     $('dur-total').textContent = fmt(duration);
   }
 
-  applyReels(0);
+  $('side-print').textContent = sideA ? 'A' : 'B';
+  $('paper-side').textContent = sideA ? 'A' : 'B';
+  applyReels(batchIdx / BATCH_SIZE);
   requestAnimationFrame(frame);
 
   refresh();
