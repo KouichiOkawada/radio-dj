@@ -26,7 +26,7 @@ presenta el artista, lee la hora y el **clima real**, tira **datos curiosos**
 con búsqueda web, y agradece los pedidos en vivo — y transmite un stream
 Icecast MP3 estándar que cualquier reproductor puede sintonizar.
 
-Sin Docker. Sin pesado. **~20 MB de RAM** (el binario Go; ~50 MB con Icecast + ffmpeg) — corre en una Raspberry Pi.
+Sin Docker. Sin pesado. Un **binario de 8.7 MB**, **~20–30 MB de RAM** (~50–60 MB con Icecast + ffmpeg) — corre en una Raspberry Pi.
 
 <br clear="right" />
 
@@ -244,7 +244,7 @@ Power users / CI pueden pisar todo con env vars.
 ## 🛠️ Cómo funciona (arquitectura)
 
 ```
-radio-dj (Go, ~20 MB RAM)
+radio-dj (Go, ~20–30 MB RAM)
   ├─ supervisor   levanta y vigila icecast (child process, auto-restart)
   ├─ producer     arma la próxima tanda (Director LLM + TTS) en prefetch
   ├─ master ffmpeg (persistente)   PCM → MP3 → icecast, NUNCA se reconecta
