@@ -67,5 +67,5 @@ commands:
 config (three layers, lowest wins):
   env RDJ_*  >  ~/.radio-dj/config.json  >  defaults
 
-  Run `serve` once — the onboarding wizard writes config.json for you.`)
+  Run 'serve' once — the onboarding wizard writes config.json for you.`)
 }
