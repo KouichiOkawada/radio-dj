@@ -2,29 +2,35 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#efe6d2">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <title>radio-dj · setup</title>
 <style>
+  @font-face{
+    font-family:'Permanent Marker'; font-style:normal; font-weight:400;
+    font-display:block; src:url(/font/permanent-marker.woff2) format('woff2');
+  }
   :root{
-    --cabinet:#1c1714; --panel:#241e18; --well:#2e2620; --line:#080604;
-    --cream:#f0e6d2; --soft:#9a8a72; --gold:#e8c464; --amber:#f0b450;
-    --onair:#d6453a; --sage:#9bbf94; --edge:#3a2f25;
+    --font-ui:'Helvetica Neue',Arial,sans-serif;
+    --font-mono:'Courier New',Courier,monospace;
+    --font-hand:'Permanent Marker',cursive;
+    --bg:#efe6d2; --paper:#f7efdc; --ink:#221c16; --soft:#6b5d4a;
+    --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
+    --onair:#d6453a; --hist:#9a7b3e;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--cabinet);color:var(--cream);
-    font-family:"Helvetica Neue",Arial,sans-serif;min-height:100vh;
-    display:flex;align-items:center;justify-content:center;padding:24px;
-    background-image:
-      repeating-linear-gradient(0deg, rgba(232,196,100,.025) 0 2px, transparent 2px 32px),
-      repeating-linear-gradient(90deg, rgba(232,196,100,.025) 0 2px, transparent 2px 32px);}
-  .card{width:100%;max-width:580px;background:var(--panel);
+  body{background:var(--bg);color:var(--ink);
+    font-family:var(--font-ui);min-height:100vh;
+    display:flex;align-items:center;justify-content:center;padding:24px;}
+  .card{width:100%;max-width:580px;background:var(--paper);
     border:3px solid var(--line);box-shadow:8px 8px 0 var(--line)}
 
-  /* header + FM dial */
+  /* header + FM dial (dark inset display — radio metaphor, same on light) */
   .hd{border-bottom:3px solid var(--line)}
   .brand{display:flex;justify-content:space-between;align-items:baseline;padding:16px 22px 10px}
-  .brand h1{font-size:18px;font-weight:900;letter-spacing:2px;color:var(--cream)}
-  .brand .v{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--gold)}
+  .brand h1{font-family:var(--font-hand);font-size:26px;color:var(--ink);letter-spacing:1px}
+  .brand .v{font-family:var(--font-mono);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--onair)}
   .dial{height:20px;background:#0e0a07;position:relative;overflow:hidden;border-top:3px solid var(--line);
     background-image:
       repeating-linear-gradient(90deg, rgba(232,196,100,.45) 0 1px, transparent 1px 8px),
@@ -37,14 +43,14 @@
 
   .bd{padding:24px}
   .sec{margin-bottom:24px}
-  .sec h2{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;
-    color:var(--gold);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--edge)}
-  label{display:block;font-size:12px;font-weight:700;margin:12px 0 5px;color:var(--cream)}
-  input{width:100%;padding:10px 12px;border:3px solid var(--line);background:var(--well);
-    color:var(--cream);font-family:inherit;font-size:14px;font-weight:500;box-shadow:4px 4px 0 var(--line)}
-  input::placeholder{color:#6e5e48}
-  input:focus{outline:none;border-color:var(--gold);
-    box-shadow:4px 4px 0 var(--line),0 0 0 3px rgba(232,196,100,.18)}
+  .sec h2{font-family:var(--font-mono);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
+    color:var(--ink);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  label{display:block;font-family:var(--font-ui);font-size:12px;font-weight:700;margin:12px 0 5px;color:var(--ink)}
+  input{width:100%;padding:10px 12px;border:3px solid var(--line);background:#fff;
+    color:var(--ink);font-family:var(--font-mono);font-size:13px;font-weight:700;box-shadow:4px 4px 0 var(--line)}
+  input::placeholder{font-family:var(--font-mono);color:#9a8a72;font-weight:600}
+  input:focus{outline:none;border-color:var(--gold);background:#fffdf3;
+    box-shadow:4px 4px 0 var(--line),0 0 0 3px rgba(232,196,100,.25)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .row{display:flex;gap:10px;align-items:flex-end}
   .row>div{flex:1}
@@ -52,38 +58,37 @@
   /* custom dropdown (real select hidden in place, same id) */
   .dd{position:relative;width:100%}
   .dd-btn{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;
-    padding:10px 12px;border:3px solid var(--line);background:var(--well);color:var(--cream);
-    font-family:inherit;font-size:14px;font-weight:700;text-align:left;cursor:pointer;
+    padding:10px 12px;border:3px solid var(--line);background:#fff;color:var(--ink);
+    font-family:var(--font-mono);font-size:13px;font-weight:700;text-align:left;cursor:pointer;
     box-shadow:4px 4px 0 var(--line)}
   .dd-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--line)}
   .dd-btn[aria-expanded="true"]{border-color:var(--gold)}
   .dd-btn:focus-visible{outline:none;border-color:var(--gold);
     box-shadow:4px 4px 0 var(--line),0 0 0 3px rgba(232,196,100,.25)}
   .dd-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .dd-caret{font-size:9px;color:var(--gold);letter-spacing:1px}
+  .dd-caret{font-size:9px;color:var(--onair);letter-spacing:1px}
   .dd-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:50;list-style:none;
-    background:var(--panel);border:3px solid var(--line);box-shadow:6px 6px 0 var(--line);
+    background:#fff;border:3px solid var(--line);box-shadow:6px 6px 0 var(--line);
     max-height:240px;overflow:auto;padding:4px}
-  .dd-menu li{padding:9px 10px;font-size:13px;font-weight:700;color:var(--cream);
+  .dd-menu li{padding:9px 10px;font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--soft);
     cursor:pointer;border:1px solid transparent;border-left:3px solid transparent}
-  .dd-menu li:hover{background:rgba(232,196,100,.12)}
-  .dd-menu li.sel{color:var(--gold);border-left-color:var(--gold)}
+  .dd-menu li:hover{background:#fffdf3}
+  .dd-menu li.sel{color:var(--ink);border-left-color:var(--onair)}
   .dd-menu li:focus-visible{outline:none;border-color:var(--gold);border-left-color:var(--gold)}
 
-  .test{padding:10px 18px;border:3px solid var(--line);background:var(--well);color:var(--cream);
-    font-family:inherit;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:1px;
+  .test{padding:10px 18px;border:3px solid var(--line);background:#fff;color:var(--ink);
+    font-family:var(--font-ui);font-weight:900;font-size:12px;text-transform:uppercase;letter-spacing:1px;
     cursor:pointer;box-shadow:4px 4px 0 var(--line)}
   .test:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--line)}
-  .res{font-size:12px;font-weight:700;margin-top:8px;min-height:16px}
+  .res{font-family:var(--font-mono);font-size:12px;font-weight:800;margin-top:8px;min-height:16px}
   .res.ok{color:var(--sage)} .res.err{color:var(--onair)}
   .save{width:100%;margin-top:12px;padding:15px;border:3px solid var(--line);background:var(--gold);
-    color:var(--cabinet);font-family:inherit;font-weight:900;font-size:15px;text-transform:uppercase;
-    letter-spacing:2px;cursor:pointer;
-    box-shadow:6px 6px 0 var(--line),0 0 28px rgba(240,180,80,.30)}
+    color:var(--ink);font-family:var(--font-ui);font-weight:900;font-size:15px;text-transform:uppercase;
+    letter-spacing:2px;cursor:pointer;box-shadow:6px 6px 0 var(--line)}
   .save:active{transform:translate(6px,6px);box-shadow:0 0 0 var(--line)}
-  .done{margin-top:14px;padding:14px;border:3px solid var(--sage);background:rgba(155,191,148,.12);
-    color:var(--cream);font-weight:700;box-shadow:4px 4px 0 var(--line);display:none}
-  .done code{background:rgba(232,196,100,.15);padding:1px 5px;border:1px solid var(--edge);color:var(--gold)}
+  .done{margin-top:14px;padding:14px;border:3px solid var(--sage);background:rgba(155,191,148,.18);
+    color:var(--ink);font-weight:700;box-shadow:4px 4px 0 var(--line);display:none}
+  .done code{font-family:var(--font-mono);background:#fffdf3;padding:1px 5px;border:1px solid var(--line);color:var(--ink)}
   .hint{font-size:11px;color:var(--soft);margin-top:5px;font-weight:600}
 </style>
 </head>

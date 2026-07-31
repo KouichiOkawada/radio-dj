@@ -44,15 +44,16 @@ No Docker. No bloat. **~50 MB of RAM** — runs on a Raspberry Pi.
   recompiling.
 - **BYOK LLM** — GLM, OpenAI, OpenRouter, Ollama, Groq, or any
   OpenAI-compatible provider.
-- **Always-on** — installs as a macOS launchd service, survives reboots.
+- **Always-on** — installs as a macOS launchd or Linux systemd service, survives reboots.
+- **Installable PWA** — add the radio UI to your dock/home screen (Chrome install button or Safari → Add to Dock). App shell works offline.
 
 ---
 
 ## 📸 Screenshots
 
-| DJ on air (desktop) | Mobile |
-|:---:|:---:|
-| <img src="docs/screenshots/dj-onair.png" alt="DJ on air — desktop UI with animated cassette" width="100%" /> | <img src="docs/screenshots/mobile.png" alt="Mobile view" width="280" /> |
+| DJ on air (desktop) | Mobile | Setup wizard |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/dj-onair.png" alt="DJ on air — desktop UI with animated cassette" width="100%" /> | <img src="docs/screenshots/mobile.png" alt="Mobile view" width="200" /> | <img src="docs/screenshots/onboarding.png" alt="Onboarding wizard — first-run setup" width="180" /> |
 
 ---
 
@@ -107,6 +108,17 @@ radio-dj uninstall    # stop and remove the service
 ```
 
 Then open **http://localhost:7710** (UI) and **http://localhost:7702/stream.mp3** (stream).
+
+### Install as an app (PWA)
+
+The radio UI is a Progressive Web App — install it for a native-app feel:
+
+- **Chrome / Edge** — open the UI, click the **install icon** in the address bar.
+- **macOS Safari** — **File → Add to Dock**.
+- **iOS Safari** — Share → **Add to Home Screen**.
+
+Once installed it opens in its own window, no browser chrome, and the app
+shell loads offline (the live stream itself needs a connection).
 
 ---
 
