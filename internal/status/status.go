@@ -317,6 +317,7 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		_, _ = io.WriteString(w, strings.Join(lines, "\n"))
 	})
 	mux.HandleFunc("/font/permanent-marker.woff2", serveFont)
+	registerPWA(mux)
 	mux.HandleFunc("/cover", s.handleCover)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#efe6d2">
+<meta name="description" content="24/7 AI-DJ radio — self-hosted personal station">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="RADIO·DJ">
 <title>RADIO-DJ</title>
 <style>
   /* ── Fuentes: 3 familias unificadas (neo-brutalismo) ── */
@@ -160,8 +169,9 @@
   .rec-dot{ width:11px; height:11px; border-radius:50%; background:var(--onair); border:2px solid var(--line); animation:recpulse 1s steps(2) infinite; }
   @keyframes recpulse{ 50%{ opacity:.25; } }
   .ask form{ display:flex; flex-wrap:wrap; }
-  .ask input{ padding:12px 13px; border:3px solid var(--line); background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; min-width:0; }
-  #q-from{ flex:1 1 100%; border-bottom-width:0; font-size:13px; font-weight:600; color:var(--soft); }
+  .ask input{ padding:12px 13px; border:3px solid var(--line); background:#fff; color:var(--ink); font-family:var(--font-mono); font-size:13px; font-weight:700; min-width:0; }
+  .ask input::placeholder{ font-family:var(--font-mono); font-weight:600; color:#9a8a72; }
+  #q-from{ flex:1 1 100%; border-bottom-width:0; }
   #q-from:focus{ outline:none; background:#fffdf3; }
   #q{ flex:1; border-right:none; }
   #q:focus{ outline:none; background:#fffdf3; }
@@ -416,6 +426,8 @@
 
 <audio id="audio" preload="none"></audio>
 <script>
+  // PWA: register service worker for installability + offline app shell.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
   const audio = document.getElementById('audio');
   audio.src = 'stream.mp3';
   const $ = id => document.getElementById(id);
