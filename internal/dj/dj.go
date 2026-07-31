@@ -49,11 +49,11 @@ type (
 		Candidates []Cand `json:"candidates"`
 		Requests   []Req  `json:"requests,omitempty"`
 	}
-	// Break is the talk the director schedules before a setlist position.
+	// Break is the talk the director schedules for a setlist position.
 	Break struct {
 		Before int    `json:"before"`           // index into setlist
 		Kind   string `json:"kind"`             // intro|trivia|wiki|history|station|time|none
-		Text   string `json:"text,omitempty"`   // spoken copy (empty for time/none)
+		At     string `json:"at,omitempty"`     // "before" (default) | "mid"
 	}
 	// Plan is the director's output: an ordered setlist + talk breaks.
 	Plan struct {
@@ -99,11 +99,19 @@ func (d *DJ) SaySearch(user string) string {
 	return d.complete(user, true)
 }
 
-// Banter is a between-track intro for a song.
+// Banter is a between-track intro for a song (uses the "intro" prompt).
 func (d *DJ) Banter(title, artist, album string) string {
-	return d.Say(d.p.Sub("banter", map[string]string{
+	return d.Say(d.p.Sub("intro", map[string]string{
 		"title":  title,
 		"credit": d.credit(artist, album),
+	}))
+}
+
+// SayMidroll is a short mid-song commentary.
+func (d *DJ) SayMidroll(title, artist string) string {
+	return d.Say(d.p.Sub("midroll", map[string]string{
+		"title":  title,
+		"credit": d.credit(artist, ""),
 	}))
 }
 

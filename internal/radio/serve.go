@@ -30,6 +30,7 @@ type Segment struct {
 	Path     string
 	IsVoice  bool
 	LiveTime bool // voice generated at air-time (clock skill) — no pre-baked Path
+	Midroll  bool // voice fires mid-song (~50%), not at the start
 	Meta     library.Track // valid when !IsVoice
 	Text     string        // DJ speech text — logged at air-time, not build-time
 	Req      string        // request text that matched this track — air-time log
@@ -126,12 +127,18 @@ func Serve(cfg config.Config) error {
 		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
 		pendingVoicePath := ""
 		pendingVoiceText := ""
+		pendingMidrollPath := ""
+		pendingMidrollText := ""
 		pendingLiveTime := false
 		for i, seg := range segs {
 			if seg.IsVoice {
-				if seg.LiveTime {
+				switch {
+				case seg.LiveTime:
 					pendingLiveTime = true // clock skill — voice built at air-time
-				} else {
+				case seg.Midroll:
+					pendingMidrollPath = seg.Path // fire mid-song (~50%)
+					pendingMidrollText = seg.Text
+				default:
 					pendingVoicePath = seg.Path // overlay over the next song (live ducking)
 					pendingVoiceText = seg.Text
 				}
@@ -172,6 +179,25 @@ func Serve(cfg config.Config) error {
 					}
 				}()
 			}
+			// midroll: fire at ~50% of the song duration
+			if pendingMidrollPath != "" {
+				mf := pendingMidrollPath
+				mt := pendingMidrollText
+				src := seg.Meta.Src
+				pendingMidrollPath = ""
+				pendingMidrollText = ""
+				go func() {
+					dur := library.Duration(src).Seconds()
+					if dur < 30 {
+						return // too short for midroll
+					}
+					time.Sleep(time.Duration(dur * 0.5 * float64(time.Second)))
+					logDJ("DJ", mt)
+					if err := streamer.Interject(mf); err != nil {
+						log.Printf("[dj] midroll interject: %v", err)
+					}
+				}()
+			}
 			if perr := streamer.Play(seg.Path); perr != nil {
 				log.Printf("[radio-dj] segment error: %v", perr)
 			}
@@ -208,12 +234,12 @@ func Serve(cfg config.Config) error {
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
 func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, trackCount *int) (segs []Segment, reqs string, err error) {
-	addVoice := func(text string) {
+	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
 		}
 		if vf, verr := vox.Speak(text); verr == nil {
-			segs = append(segs, Segment{Path: vf, IsVoice: true, Text: text})
+			segs = append(segs, Segment{Path: vf, IsVoice: true, Text: text, Midroll: midroll})
 			log.Printf("[dj] %s", text) // stderr (debug); the air-time log fires in the consumer
 		} else {
 			log.Printf("[dj] voice: %v", verr)
@@ -230,7 +256,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		if len(ms) > 0 {
 			t := ms[0]
 			if cfg.DJEnabled {
-				addVoice(skills.RequestAck(djx, t, req.Text))
+				addVoice(skills.RequestAck(djx, t, req.Text), false)
 			}
 			addTrack(t)
 			lib.MarkPlayed(t.Src)
@@ -258,17 +284,24 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 				Requests:   reqCtx,
 			}
 			if plan, perr := djx.DirectPlan(ctx); perr == nil {
-				bm := map[int]dj.Break{}
+				bm := map[int][]dj.Break{}
 				for _, b := range plan.Breaks {
-					bm[b.Before] = b
+					bm[b.Before] = append(bm[b.Before], b)
 				}
 				for pos, id := range plan.Setlist {
-					b := bm[pos]
-					switch {
-					case b.Kind == "time":
-						segs = append(segs, Segment{IsVoice: true, LiveTime: true}) // clock deferred to air-time
-					case b.Kind != "none" && strings.TrimSpace(b.Text) != "":
-						addVoice(b.Text)
+					for _, b := range bm[pos] {
+						switch {
+						case b.Kind == "time":
+							segs = append(segs, Segment{IsVoice: true, LiveTime: true})
+						case b.Kind == "none" || b.Kind == "":
+							// skip
+						case b.At == "mid":
+							addVoice(djx.SayMidroll(cands[id].Title, cands[id].Artist), true)
+						case b.Kind == "wiki":
+							addVoice(djx.SayWiki(cands[id].Artist, cands[id].Title), false)
+						default:
+							addVoice(djx.Banter(cands[id].Title, cands[id].Artist, cands[id].Album), false)
+						}
 					}
 					addTrack(cands[id])
 					*trackCount++
