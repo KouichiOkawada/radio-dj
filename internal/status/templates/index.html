@@ -122,14 +122,13 @@
   @keyframes bounce{ to{ opacity:.3; } }
 
   /* ── Panel con pestañas (debajo de la botonera) ── */
-  .tabs{ padding:0; overflow:hidden; }
-  .tab-bar{ display:flex; }
+  .tabs{ padding:0; }
+  .tab-bar{ display:flex; margin-top:5px; }
   .tab{ flex:1; padding:12px 6px 14px; border:0; background:#cfc7b5; cursor:pointer;
     font-family:inherit; font-size:10px; font-weight:900; letter-spacing:.8px; text-transform:uppercase;
     color:#6b5d4a; border-right:3px solid var(--line); border-bottom:3px solid var(--line);
     position:relative; white-space:nowrap;
-    box-shadow:0 4px 0 #a39a82;
-    transition:transform .08s ease-out, box-shadow .08s ease-out, background .12s;
+    transition:transform .1s ease-out, box-shadow .1s ease-out, background .12s;
     -webkit-tap-highlight-color:transparent; }
   .tab:last-child{ border-right:none; }
   /* tira de color inferior — cada pestaña con identidad propia */
@@ -137,13 +136,13 @@
   .tab[data-tab="history"]::after{ background:var(--hist); }
   .tab[data-tab="djlog"]::after{ background:var(--sage); }
   .tab[data-tab="reqs"]::after{ background:var(--rose); }
-  /* activa = hundida (flush, sin sombra) + rellena con su color */
-  .tab.active{ box-shadow:none; transform:translateY(4px); }
+  /* activa = levantada como pestaña de carpeta */
+  .tab.active{ transform:translateY(-5px); box-shadow:0 4px 0 #a39a82; z-index:2; }
   .tab.active::after{ display:none; }
   .tab.active[data-tab="history"]{ background:var(--hist); color:#fff5e6; }
   .tab.active[data-tab="djlog"]{ background:var(--sage); color:var(--ink); }
   .tab.active[data-tab="reqs"]{ background:var(--rose); color:var(--ink); }
-  .tab:not(.active):active{ transform:translateY(2px); box-shadow:0 2px 0 #a39a82; }
+  .tab:not(.active):active{ background:#dfd9c8; }
   .tab:not(.active):hover{ background:#dfd9c8; }
   .tab .badge{ display:inline-block; min-width:15px; padding:1px 4px; margin-left:4px; border-radius:8px;
     background:var(--onair); color:#fff5e6; font-size:7px; line-height:1.5; vertical-align:middle; font-weight:900; }
