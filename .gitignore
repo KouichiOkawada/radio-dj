@@ -5,6 +5,9 @@
 # state / runtime (config.json, now-playing.json, icecast.xml — all runtime)
 *.json
 *.xml
+# …but embedded source templates MUST ship with the repo
+!internal/i18n/prompts/*.json
+!internal/status/templates/manifest.json
 state/
 logs/
 
