@@ -26,6 +26,8 @@ type Track struct {
 	Title    string  `json:"title"`
 	Artist   string  `json:"artist"`
 	Album    string  `json:"album,omitempty"`
+	Year     string  `json:"year,omitempty"`
+	BPM      string  `json:"bpm,omitempty"`
 	Duration float64 `json:"duration,omitempty"` // seconds (folder source only)
 	Src      string  `json:"-"`                  // internal: source path for cover art
 }
@@ -73,7 +75,7 @@ func New(stateDir string, needsSetup bool) *Server {
 func (s *Server) SetCurrent(cur, next Track) {
 	s.mu.Lock()
 	if prev := s.cur.Current; prev.Title != "" && prev.Title != cur.Title {
-		s.history = append([]Track{{Title: prev.Title, Artist: prev.Artist, Album: prev.Album}}, s.history...)
+		s.history = append([]Track{{Title: prev.Title, Artist: prev.Artist, Album: prev.Album, Year: prev.Year}}, s.history...)
 		if len(s.history) > 10 {
 			s.history = s.history[:10]
 		}

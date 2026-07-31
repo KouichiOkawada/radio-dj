@@ -354,7 +354,7 @@ func toStatus(t library.Track) status.Track {
 	if t.Src != "" && !strings.Contains(t.Src, "://") {
 		d = library.Duration(t.Src).Seconds()
 	}
-	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album, Duration: d, Src: t.Src}
+	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album, Year: t.Year, BPM: t.BPM, Duration: d, Src: t.Src}
 }
 
 func or(s, def string) string {

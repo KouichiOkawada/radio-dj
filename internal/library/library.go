@@ -25,6 +25,8 @@ type Track struct {
 	Title  string `json:"title"`
 	Artist string `json:"artist"`
 	Album  string `json:"album,omitempty"`
+	Year   string `json:"year,omitempty"`
+	BPM    string `json:"bpm,omitempty"`
 }
 
 type Library interface {
@@ -98,7 +100,15 @@ func (f *folder) Next() (Track, error) {
 			continue
 		}
 		f.played[p] = true
-		return Track{Src: p, Title: stripExt(filepath.Base(p)), Artist: parentDir(p, f.root)}, nil
+		m := probe(p)
+		return Track{
+			Src: p,
+			Title:  fallback(m.Title, stripExt(filepath.Base(p))),
+			Artist: fallback(m.Artist, parentDir(p, f.root)),
+			Album:  m.Album,
+			Year:   m.Year,
+			BPM:    m.BPM,
+		}, nil
 	}
 	// shouldn't reach here, but stay alive
 	f.played = map[string]bool{}
@@ -120,7 +130,15 @@ func (f *folder) Sample(n int) []Track {
 		if f.played[p] {
 			continue
 		}
-		out = append(out, Track{Src: p, Title: stripExt(filepath.Base(p)), Artist: parentDir(p, f.root)})
+		m := probe(p)
+		out = append(out, Track{
+			Src:    p,
+			Title:  fallback(m.Title, stripExt(filepath.Base(p))),
+			Artist: fallback(m.Artist, parentDir(p, f.root)),
+			Album:  m.Album,
+			Year:   m.Year,
+			BPM:    m.BPM,
+		})
 		if len(out) >= n {
 			break
 		}
@@ -143,7 +161,15 @@ func (f *folder) Search(q string) ([]Track, error) {
 	for _, p := range f.files {
 		hay := strings.ToLower(filepath.Base(p) + " " + parentDir(p, f.root))
 		if strings.Contains(hay, q) {
-			out = append(out, Track{Src: p, Title: stripExt(filepath.Base(p)), Artist: parentDir(p, f.root)})
+			m := probe(p)
+			out = append(out, Track{
+				Src:    p,
+				Title:  fallback(m.Title, stripExt(filepath.Base(p))),
+				Artist: fallback(m.Artist, parentDir(p, f.root)),
+				Album:  m.Album,
+				Year:   m.Year,
+				BPM:    m.BPM,
+			})
 			if len(out) >= 10 {
 				break
 			}
@@ -214,6 +240,7 @@ func (n *navidrome) Search(q string) ([]Track, error) {
 			SearchResult3 struct {
 				Song []struct {
 					ID, Title, Artist, Album string
+					Year                    int
 				} `json:"song"`
 			} `json:"searchResult3"`
 		} `json:"subsonic-response"`
@@ -232,6 +259,7 @@ func (n *navidrome) Search(q string) ([]Track, error) {
 			Title:  s.Title,
 			Artist: s.Artist,
 			Album:  s.Album,
+			Year:   strconv.Itoa(s.Year),
 		})
 	}
 	return out, nil
@@ -259,6 +287,7 @@ func (n *navidrome) refill() error {
 			RandomSongs struct {
 				Song []struct {
 					ID, Title, Artist, Album, Suffix string
+					Year                             int
 				} `json:"song"`
 			} `json:"randomSongs"`
 		} `json:"subsonic-response"`
@@ -282,6 +311,7 @@ func (n *navidrome) refill() error {
 			Title:  s.Title,
 			Artist: s.Artist,
 			Album:  s.Album,
+			Year:   strconv.Itoa(s.Year),
 		})
 	}
 	return nil
@@ -305,22 +335,81 @@ func parentDir(p, root string) string {
 
 // Duration returns a track's playback length via ffprobe (cached per path).
 // Falls back to 3min if ffprobe fails so the loop never blocks on metadata.
-var durCache sync.Map
-
 func Duration(path string) time.Duration {
-	if v, ok := durCache.Load(path); ok {
-		return v.(time.Duration)
+	return probe(path).Duration
+}
+
+// fileMeta bundles everything probe() extracts in one ffprobe call.
+type fileMeta struct {
+	Duration time.Duration
+	Title    string
+	Artist   string
+	Album    string
+	Year     string
+	BPM      string
+}
+
+var probeCache sync.Map // path → fileMeta
+
+// probe runs ffprobe once per file (cached) to extract duration + ID3 tags.
+// Streaming URLs (http://) skip probing — returns duration 3min, empty tags.
+func probe(path string) fileMeta {
+	if v, ok := probeCache.Load(path); ok {
+		return v.(fileMeta)
 	}
-	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
-		"-of", "csv=p=0", path).Output()
-	secs := 180.0
-	if err == nil {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); err == nil && f > 0 {
-			secs = f
+	m := fileMeta{Duration: 180 * time.Second}
+	if !strings.Contains(path, "://") {
+		out, err := exec.Command("ffprobe", "-v", "error",
+			"-show_entries", "format=duration:format_tags=title,artist,album,date,TBPM",
+			"-of", "json", path).Output()
+		if err == nil {
+			var doc struct {
+				Format struct {
+					Duration string `json:"duration"`
+					Tags     struct {
+						Title, Artist, Album, Date, TBPM string
+					} `json:"tags"`
+				} `json:"format"`
+			}
+			if json.Unmarshal(out, &doc) == nil {
+				if f, err := strconv.ParseFloat(strings.TrimSpace(doc.Format.Duration), 64); err == nil && f > 0 {
+					m.Duration = time.Duration(f * float64(time.Second))
+				}
+				m.Title = doc.Format.Tags.Title
+				m.Artist = doc.Format.Tags.Artist
+				m.Album = cleanAlbum(doc.Format.Tags.Album)
+				m.Year = yearOf(doc.Format.Tags.Date)
+				m.BPM = strings.TrimSpace(doc.Format.Tags.TBPM)
+			}
 		}
 	}
-	d := time.Duration(secs * float64(time.Second))
-	durCache.Store(path, d)
-	return d
+	probeCache.Store(path, m)
+	return m
+}
+
+// fallback returns a if non-empty, else b.
+func fallback(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// cleanAlbum treats placeholder names as empty.
+func cleanAlbum(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "- Unknown Album" || s == "Unknown Album" {
+		return ""
+	}
+	return s
+}
+
+// yearOf extracts the 4-digit year from a date tag (handles YYYYMMDD, YYYY).
+func yearOf(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 4 {
+		return s[:4]
+	}
+	return s
 }
 

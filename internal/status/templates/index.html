@@ -77,6 +77,7 @@
   .label-marker{ font-family:var(--font-hand); fill:#2b2118; }
   .label-marker.big{ font-size:15px; }
   .label-marker.small{ font-size:9px; fill:#6a5a44; }
+  .label-marker.bpm{ font-size:7.5px; fill:#9a7b3e; letter-spacing:.3px; }
   .label-side{ font-family:var(--font-hand); font-size:16px; fill:#c8443a; }
   #next-label text{ font-family:var(--font-hand); }
   .shell-print{ font:800 11px var(--font-ui); letter-spacing:2.6px; fill:#5a5346; }
@@ -135,7 +136,7 @@
   .tab-body{ padding:12px 14px; }
   .tab-body[hidden]{ display:none; }
   .tab-body ul{ margin:0; list-style:none; }
-  .tab-body li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
+  .tab-body li{ font-family:var(--font-mono); font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
   .tab-body li:first-child{ border-top:none; }
   .tab-body .empty{ font-size:11px; color:var(--soft); padding:2px 0; font-weight:600; border:none; }
   .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:var(--font-mono); font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
@@ -183,7 +184,6 @@
 
     <div class="blk card">
       <div class="card-bot">
-        <span class="card-tag" id="state-tag">Ahora suena</span>
         <span class="card-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
         <div class="songbar" id="prog" style="display:none"><i></i></div>
       </div>
@@ -310,11 +310,11 @@
                      preserveAspectRatio="xMidYMid slice" style="display:none"/>
               <rect x="45" y="45" width="42" height="42" rx="2" fill="none" stroke="#161009" stroke-width="2"/>
               <!-- texto -->
-              <line class="label-line" x1="98" y1="72" x2="354" y2="72"/>
+              <line class="label-line" x1="98" y1="63" x2="354" y2="63"/>
               <text class="label-side" x="352" y="52" text-anchor="end" id="paper-side">A</text>
-              <text class="label-marker small" x="99" y="53" id="paper-kicker">RADIO·DJ 88.7</text>
-              <text class="label-marker big"   x="99" y="69" id="paper-title">—</text>
-              <text class="label-marker small" x="99" y="85" id="paper-artist"></text>
+              <text class="label-marker big"   x="99" y="56" id="paper-title">—</text>
+              <text class="label-marker small" x="99" y="76" id="paper-artist"></text>
+              <text class="label-marker bpm"   x="99" y="89" id="paper-bpm" style="display:none"></text>
             </g>
 
             <!-- ── etiqueta "Siguiente": sticker pequeño debajo de los rollos, sobre la cinta ── -->
@@ -526,10 +526,19 @@
     }
     metaTitle = c.title||''; metaArtist = c.artist||'';
     const clip = (s,n)=> s && s.length>n ? s.slice(0,n-1).trimEnd()+'…' : (s||'');
-    $('paper-title').textContent  = clip(metaTitle,26) || '—';
-    $('paper-artist').textContent = clip(metaArtist,34);
-    $('paper-kicker').textContent = metaTitle ? 'Ahora suena' : 'RADIO·DJ 88.7';
-    const nx = j.next ? clip(j.next.title,24) + (j.next.artist ? ' — ' + clip(j.next.artist,16) : '') : '—';
+    $('paper-title').textContent  = clip(metaTitle,24) || '—';
+    // Artist · Album · Year — only include non-empty parts
+    const parts = [metaArtist, c.album, c.year].filter(Boolean).map(s=>clip(s,28));
+    $('paper-artist').textContent = parts.join(' · ');
+    // BPM line (hidden when tag absent)
+    const bpmEl = $('paper-bpm');
+    if(c.bpm && c.bpm !== '0'){
+      bpmEl.textContent = c.bpm.replace(/\.\d+.*/, '') + ' BPM';
+      bpmEl.style.display = '';
+    } else {
+      bpmEl.style.display = 'none';
+    }
+    const nx = j.next ? clip(j.next.title,18) + (j.next.artist ? ' — ' + clip(j.next.artist,12) : '') : '—';
     $('paper-next').textContent = nx;
     const rs = j.requests||[];
     $('reqlist').innerHTML = rs.length
