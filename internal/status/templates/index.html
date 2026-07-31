@@ -116,27 +116,26 @@
   .key .dots i:nth-child(2){animation-delay:.15s}.key .dots i:nth-child(3){animation-delay:.3s}
   @keyframes bounce{ to{ opacity:.3; } }
 
-  /* ── Bloques de info ── */
-  .meta{ display:grid; gap:12px; }
-  .row{ padding:0; overflow:hidden; }
-  .row .head{ display:flex; justify-content:space-between; align-items:center; padding:12px 14px; cursor:pointer; user-select:none; }
-  .row .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; }
-  .next .lab{ color:var(--sage); }
-  .history .lab{ color:var(--hist); }
-  .djlog .lab{ color:#7a6437; }
-  .reqs .lab{ color:var(--rose); }
-  .chev{ font-size:12px; color:var(--soft); transition:transform .2s; }
-  .collapsible.collapsed .chev{ transform:rotate(-90deg); }
-  .body{ padding:0 14px 12px; }
-  .collapsible.collapsed .body{ display:none; }
-  .next .v{ font-weight:800; }
-  .history ul,.reqs ul{ margin:0; list-style:none; }
-  .history li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
-  .history li:first-child{ border-top:none; }
-  .reqs li{ font-weight:700; padding:3px 0; }
+  /* ── Panel con pestañas (debajo de la botonera) ── */
+  .tabs{ padding:0; overflow:hidden; }
+  .tab-bar{ display:flex; }
+  .tab{ flex:1; padding:11px 6px; border:0; background:#cfc7b5; cursor:pointer;
+    font-family:inherit; font-size:9px; font-weight:900; letter-spacing:1.2px; text-transform:uppercase;
+    color:#6b5d4a; border-right:3px solid var(--line); border-bottom:3px solid var(--line);
+    transition:background .1s; -webkit-tap-highlight-color:transparent; }
+  .tab:last-child{ border-right:none; }
+  .tab.active{ background:var(--paper); color:var(--ink); border-bottom:none; }
+  .tab:not(.active):hover{ background:#dfd9c8; }
+  .tab .badge{ display:inline-block; min-width:15px; padding:1px 4px; margin-left:4px; border-radius:8px;
+    background:var(--onair); color:#fff5e6; font-size:7px; line-height:1.5; vertical-align:middle; font-weight:900; }
+  .tab-body{ padding:12px 14px; }
+  .tab-body[hidden]{ display:none; }
+  .tab-body ul{ margin:0; list-style:none; }
+  .tab-body li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
+  .tab-body li:first-child{ border-top:none; }
+  .tab-body .empty{ font-size:11px; color:var(--soft); padding:2px 0; font-weight:600; border:none; }
   .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
   .djlog pre b{ color:#7a6437; }
-  .djlog .empty{ font-size:11px; color:var(--soft); padding:2px 0; }
 
   .ask{ padding:14px; }
   .ask[hidden]{ display:none; }
@@ -314,7 +313,14 @@
               <text class="label-marker small" x="99" y="85" id="paper-artist"></text>
             </g>
 
-            
+            <!-- ── etiqueta "Siguiente": sticker pequeño debajo de los rollos, sobre la cinta ── -->
+            <g id="next-label" transform="rotate(.5 200 222)">
+              <rect class="paper-label" x="98" y="211" width="204" height="18" rx="2" stroke="#d9cba6" stroke-width=".8"/>
+              <rect x="98" y="211" width="204" height="18" rx="2" fill="none" stroke="#000" stroke-width=".6" opacity=".05"/>
+              <text font-family="'Permanent Marker',cursive" font-size="7.5" fill="#9a7b3e" x="106" y="219" letter-spacing=".4">SIGUIENTE ▸</text>
+              <text font-family="'Permanent Marker',cursive" font-size="9" fill="#2b2118" x="106" y="227" id="paper-next">—</text>
+            </g>
+
           </g>
 
           <use href="#win" fill="none" stroke="#161009" stroke-width="3"/>
@@ -365,22 +371,20 @@
       </div>
     </div>
 
-    <div class="meta">
-      <div class="blk row next">
-        <div class="head"><span class="lab">▶ Siguiente</span></div>
-        <div class="body"><div class="v" id="next">—</div></div>
+    <div class="blk tabs">
+      <div class="tab-bar">
+        <button class="tab active" data-tab="history">Sonó antes</button>
+        <button class="tab" data-tab="djlog">Locutor</button>
+        <button class="tab" data-tab="reqs">Pedidos<span class="badge" id="req-badge" hidden>0</span></button>
       </div>
-      <div class="blk row history collapsible" id="history" style="display:none">
-        <div class="head"><span class="lab">✶ Sonó antes</span><span class="chev">▾</span></div>
-        <div class="body"><ul id="history-list"></ul></div>
+      <div class="tab-body" id="tab-history">
+        <ul id="history-list"></ul>
       </div>
-      <div class="blk row djlog collapsible collapsed" id="djlog">
-        <div class="head"><span class="lab">🎙 Locutor</span><span class="chev">▾</span></div>
-        <div class="body"><pre id="djlog-body"></pre></div>
+      <div class="tab-body djlog" id="tab-djlog" hidden>
+        <pre id="djlog-body"></pre>
       </div>
-      <div class="blk row reqs" id="reqwrap" style="display:none">
-        <div class="head"><span class="lab">✉ Pedidos</span></div>
-        <div class="body"><ul id="reqlist"></ul></div>
+      <div class="tab-body" id="tab-reqs" hidden>
+        <ul id="reqlist"></ul>
       </div>
     </div>
 
@@ -481,8 +485,13 @@
   audio.addEventListener('error', reconnectStream);
   audio.addEventListener('ended', reconnectStream);
 
-  document.querySelectorAll('.collapsible > .head').forEach(h=>{
-    h.addEventListener('click', ()=> h.parentElement.classList.toggle('collapsed'));
+  // ── pestañas: Sonó antes / Locutor / Pedidos ──
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.onclick = ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.tab-body').forEach(b=> b.hidden = b.id !== 'tab-'+t.dataset.tab);
+      t.classList.add('active');
+    };
   });
 
   $('form').addEventListener('submit', async e=>{
@@ -514,10 +523,13 @@
     $('paper-title').textContent  = clip(metaTitle,26) || '—';
     $('paper-artist').textContent = clip(metaArtist,34);
     $('paper-kicker').textContent = metaTitle ? 'Ahora suena' : 'RADIO·DJ 88.7';
-    $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
+    const nx = j.next ? clip(j.next.title,24) + (j.next.artist ? ' — ' + clip(j.next.artist,16) : '') : '—';
+    $('paper-next').textContent = nx;
     const rs = j.requests||[];
-    if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
-    else { $('reqwrap').style.display='none'; }
+    $('reqlist').innerHTML = rs.length
+      ? rs.map(r=>'<li>'+esc(r.text)+'</li>').join('')
+      : '<li class="empty">Sin pedidos aún</li>';
+    const rb = $('req-badge'); rb.hidden = rs.length===0; rb.textContent = rs.length;
 
     startedAt = j.startedAt ? Date.parse(j.startedAt) : null;
     duration = (typeof c.duration === 'number') ? c.duration : null;
@@ -527,10 +539,9 @@
     $('listeners-count').textContent = l;
 
     const h = j.history||[];
-    if(h.length){
-      $('history').style.display='';
-      $('history-list').innerHTML=h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('');
-    } else { $('history').style.display='none'; }
+    $('history-list').innerHTML = h.length
+      ? h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('')
+      : '<li class="empty">Todavía no sonó nada…</li>';
 
     if(c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
     updateMediaMeta();
