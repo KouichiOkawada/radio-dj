@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#efe6d2">
 <title>RADIO-DJ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#efe6d2; --paper:#f7efdc; --ink:#221c16; --soft:#6b5d4a;
     --line:#221c16; --rose:#e6a08c; --sage:#9bbf94; --gold:#e8c464;
-    --onair:#d6453a; --shell:#241e18; --window:#100c09; --reel:#b08a4e;
-    --hist:#9a7b3e;
-    --fill:0; --r-max:86px; --r-min:26px; --r1:86px; --r2:26px; --omega1:2.8s; --omega2:0.75s;
+    --onair:#d6453a; --hist:#9a7b3e;
+    --song:0; --flow:-34px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100%}
@@ -27,7 +29,7 @@
   .stack{ width:100%; max-width:540px; margin:auto; display:grid; gap:14px; }
   .blk{ background:var(--paper); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
 
-  /* Bar */
+  /* ── Barra superior ── */
   .bar{ display:flex; align-items:stretch; }
   .bar > *{ padding:12px 14px; display:flex; align-items:center; gap:8px; font-weight:800; text-transform:uppercase; letter-spacing:2px; }
   .brand{ background:var(--gold); border-right:3px solid var(--line); font-size:15px; flex:0 0 auto; }
@@ -39,103 +41,45 @@
   .playing .onair{ background:var(--onair); color:#fff; }
   .playing .led{ border-color:#fff; }
 
-  /* Cassette Structure */
-  .cass-wrap{ perspective:1300px; }
+  /* ── Barra "ahora suena" (el título vive en la etiqueta del casete) ── */
+  .card{ padding:0; overflow:hidden; }
+  .card-bot{ position:relative; background:#e05d2b; padding:8px 13px 10px; display:flex; justify-content:space-between; align-items:center; }
+  .card-tag{ font-size:10px; font-weight:900; letter-spacing:1.8px; color:#fff5e6; text-transform:uppercase; }
+  .card-time{ font-size:11px; font-weight:800; color:#fff5e6; font-family:ui-monospace,Menlo,Consolas,monospace; letter-spacing:1px; }
+  .songbar{ position:absolute; left:0; bottom:0; height:4px; width:100%; background:rgba(70,20,0,.32); }
+  .songbar i{ display:block; height:100%; width:calc(var(--song,0) * 100%); background:#fff2dd; transition:width .9s linear; }
+  /* ecualizador reutilizado en la etiqueta SVG (ver abajo) */
+  .eq-bars i{ animation:eqb .7s steps(4) infinite alternate; transform-origin:bottom; }
+  .eq-bars i:nth-child(2){animation-delay:.12s}.eq-bars i:nth-child(3){animation-delay:.24s}
+  .eq-bars i:nth-child(4){animation-delay:.36s}
+  @keyframes eqb{ to{ transform:scaleY(2.4); } }
+
+  /* ── Casete ── */
+  .cass-wrap{ perspective:1600px; }
   .flipper{ transform-style:preserve-3d; will-change:transform; }
-  .cass{
-    background:linear-gradient(172deg,#84a4a9 0%,#6B8B90 50%,#547273 100%);
-    border:3px solid #2f3d40; border-radius:14px; position:relative; overflow:hidden;
-    box-shadow:4px 4px 0 var(--line), inset 0 2px 0 rgba(255,255,255,.2), inset 0 -4px 8px rgba(0,0,0,.18);
-  }
-  .cass::before,.cass::after{ content:""; position:absolute; top:36%; width:3px; height:22px;
-    background:repeating-linear-gradient(#2f3d40 0 1.5px,transparent 1.5px 4px); opacity:.45; z-index:3; }
-  .cass::before{ left:3px; } .cass::after{ right:3px; }
+  .cass{ display:block; width:100%; height:auto; filter:drop-shadow(6px 6px 0 var(--line)); }
 
-  .scr{ position:absolute; width:11px; height:11px; border-radius:50%; z-index:8;
-    background:radial-gradient(circle at 35% 35%,#d4c4a0,#8a7a5a 60%,#5a4d36);
-    box-shadow:0 0 0 1.5px #2f3d40; }
-  .scr::after{ content:""; position:absolute; inset:2.5px; border-radius:50%;
-    background:linear-gradient(45deg,transparent 44%,#3a3328 44% 56%,transparent 56%),
-               linear-gradient(135deg,transparent 44%,#3a3328 44% 56%,transparent 56%); }
-  .scr.tl{top:7px;left:7px}.scr.tr{top:7px;right:7px}
-  .scr.bl{bottom:7px;left:7px}.scr.br{bottom:7px;right:7px}
-  .scr.bc{bottom:6px;left:50%;margin-left:-5.5px;z-index:9}
+  .tape-shadow{ fill:none; stroke:#000; stroke-width:5; opacity:.28; }
+  .tape-body{ fill:none; stroke:#140d07; stroke-width:2.6; }
+  .tape-sheen{ fill:none; stroke:#f0dcb8; stroke-width:2.6; opacity:0; stroke-dasharray:2 34; }
+  .playing .tape-sheen{ opacity:.30; animation:flow .85s linear infinite; }
+  @keyframes flow{ to{ stroke-dashoffset:var(--flow); } }
+  .pack-edge{ fill:none; stroke:#d8c49a; stroke-width:1.4; opacity:.45; }
+  /* etiqueta de papel encolada sobre la ventana */
+  .paper-label{ fill:#f3ead2; }
+  .label-line{ stroke:#c4b48c; stroke-width:.7; }
+  .label-marker{ font-family:'Permanent Marker',cursive; fill:#2b2118; }
+  .label-marker.big{ font-size:15px; }
+  .label-marker.small{ font-size:9px; fill:#6a5a44; }
+  .label-side{ font-family:'Permanent Marker',cursive; font-size:16px; fill:#c8443a; }
+  .shell-print{ font:800 11px "Helvetica Neue",Arial,sans-serif; letter-spacing:2.6px; fill:#eaf2f2; opacity:.5; }
+  .shell-side{ font:900 15px "Helvetica Neue",Arial,sans-serif; fill:#eaf2f2; opacity:.72; }
 
-  /* Label */
-  .label{ margin:16px 16px 0; border:2px solid #2f3d40; border-radius:5px; overflow:hidden; box-shadow:0 2px 5px rgba(0,0,0,.3); }
-  .lbl-top{ background:#f2e1b1; padding:10px 12px; }
-  .now-row{ display:flex; gap:11px; align-items:center; }
-  .cover{ width:46px; height:46px; flex:0 0 auto; background:#765037 center/cover no-repeat; border:2px solid #2f3d40; border-radius:3px; display:none; }
-  .cover.has{ display:block; }
-  .now-text{ flex:1; min-width:0; }
-  .k{ font-size:8px; letter-spacing:2px; text-transform:uppercase; color:#7a5538; font-weight:800; }
-  .title{ font-size:15px; font-weight:900; text-transform:uppercase; margin-top:2px; display:flex; gap:8px; align-items:center; color:#2a1d10; }
-  .title span:last-child{ overflow-wrap:anywhere; }
-  .eq{ display:inline-flex; gap:2px; height:15px; align-items:flex-end; flex-shrink:0; }
-  .eq i{ width:3px; height:4px; background:#e05d2b; display:block; }
-  .playing .eq i{ animation:eq .7s steps(4) infinite alternate; }
-  .eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}
-  .eq i:nth-child(4){animation-delay:.36s}.eq i:nth-child(5){animation-delay:.48s}
-  @keyframes eq{ to{ height:13px; } }
-  .artist{ font-size:11px; color:#7a5538; margin-top:1px; font-weight:700; overflow-wrap:anywhere; }
-
-  .lbl-mid{ background:#765037; padding:8px 10px; border-top:1.5px solid #2f3d40; display:flex; align-items:stretch; gap:8px; }
-  .side-letter{ font-size:30px; font-weight:900; color:#f2e1b1; flex:0 0 auto; width:24px; text-align:center; text-shadow:1px 1px 0 #2a1d10; align-self:center; }
-
-  /* Tape Zone & Overlay Layer */
-  .tape-zone{ position:relative; flex:1; min-width:0; }
-  .reel-row{ display:flex; align-items:center; justify-content:space-between; padding:4px 10px; background:rgba(20,12,6,.32); border:1.5px solid #f2e1b1; border-radius:4px; position:relative; z-index:1; }
-  .reel-hole{ width:88px; height:88px; flex:0 0 auto; position:relative; display:flex; align-items:center; justify-content:center; }
-
-  .pile{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border-radius:50%; z-index:1;
-    background:repeating-radial-gradient(circle,#241a10 0 1.5px,#3a2c1c 1.5px 3px);
-    box-shadow:0 0 0 1px #100a05; transition:width .6s linear,height .6s linear; }
-  .pile.l{ width:var(--r1,86px); height:var(--r1,86px); }
-  .pile.r{ width:var(--r2,26px); height:var(--r2,26px); }
-  .no-trans .pile{ transition:none !important; }
-
-  .hub{ width:26px; height:26px; border-radius:50%; position:relative; z-index:3;
-    background:radial-gradient(circle,#1a1410 0 20%,#c4b896 21% 36%,#f2e1b1 37% 50%,#a89870 51%); box-shadow:0 0 0 2px #5a4d36; }
-  .hub::before{ content:""; position:absolute; inset:-3px; border-radius:50%;
-    background:conic-gradient(from 0deg, #f2e1b1 0 26deg,transparent 0 60deg,#f2e1b1 0 86deg,transparent 0 120deg, #f2e1b1 0 146deg,transparent 0 180deg,#f2e1b1 0 206deg,transparent 0 240deg, #f2e1b1 0 266deg,transparent 0 300deg,#f2e1b1 0 326deg,transparent 0 360deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 9px,#000 10px); mask:radial-gradient(circle,transparent 0 9px,#000 10px); }
-  .hub::after{ content:""; position:absolute; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
-    background:conic-gradient(#d6453a 0 50deg,transparent 50deg);
-    -webkit-mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); mask:radial-gradient(circle,transparent 0 2.5px,#000 3px); }
-
-  .hub.l{ animation:spin var(--omega1,2.8s) linear infinite; }
-  .hub.r{ animation:spin var(--omega2,2.8s) linear infinite; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
-
-  .tape-layer{ position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
-  .tape-layer .tape-shadow{ fill:none; stroke:#000; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; opacity:0.35; }
-  .tape-layer .tape-path{ fill:none; stroke:#1a1008; stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round;
-    stroke-dasharray:8 4; animation:tapeFlow .3s linear infinite; }
-  .tape-layer.leader .tape-path{ stroke:rgba(255,245,230,0.6); }
-  .tape-layer.leader .tape-shadow{ opacity:0.1; }
-  @keyframes tapeFlow{ to{ stroke-dashoffset:12; } }
-
-  .gauge{ margin-top:6px; height:12px; position:relative; z-index:1; }
-  .gauge-track{ position:absolute; left:0; right:0; top:5px; height:2px; background:#f2e1b1; opacity:.35; }
-  .gauge-ticks{ display:flex; justify-content:space-between; position:relative; }
-  .gauge-ticks i{ width:1.5px; height:8px; background:#f2e1b1; opacity:.5; }
-  .gauge-dot{ position:absolute; top:1px; left:calc(var(--fill,0) * 100%); width:9px; height:9px; border-radius:50%; background:#e05d2b; border:1.5px solid #f2e1b1; transform:translateX(-50%); box-shadow:0 0 5px rgba(224,93,43,.7); transition:left .8s linear; }
-
-  .lbl-bot{ background:#e05d2b; padding:6px 12px; display:flex; justify-content:space-between; align-items:center; border-top:1.5px solid #2f3d40; }
-  .lbl-tag{ font-size:9px; font-weight:900; letter-spacing:1.5px; color:#fff; text-transform:uppercase; }
-  .lbl-time{ font-size:11px; font-weight:800; color:#fff; font-family:monospace; letter-spacing:1px; }
-
-  .mech{ margin:6px 0 0; height:30px; position:relative; z-index:1; background:linear-gradient(#5f8085,#44666a); clip-path:polygon(7% 0,93% 0,100% 100%,0 100%); }
-  .mech-head,.mech-cap,.mech-guide{ z-index:3; }
-  .mech-head{ position:absolute; left:50%; top:4px; transform:translateX(-50%); width:50px; height:12px; background:#15100a; border:1.5px solid #f2e1b1; border-radius:2px; }
-  .mech-cap{ position:absolute; top:4px; width:10px; height:10px; border-radius:50%; background:#15100a; border:1.5px solid #f2e1b1; }
-  .mech-cap.l{ left:21%; } .mech-cap.r{ right:21%; }
-  .mech-guide{ position:absolute; top:8px; width:6px; height:6px; background:#15100a; border:1px solid #f2e1b1; }
-  .mech-guide.l{ left:10%; } .mech-guide.r{ right:10%; }
-
-  .transport{ display:flex; gap:12px; margin-top:7px; }
+  /* ── Transporte ── */
+  .transport{ display:flex; gap:12px; margin-top:14px; }
   .transport button{ flex:1; padding:14px 8px; border:3px solid #000; cursor:pointer; font-family:inherit; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:var(--ink); transition:transform .05s, opacity .15s, background .15s; display:flex; align-items:center; justify-content:center; gap:7px; }
   .transport button:active{ transform:translateY(2px); }
+  .transport button:focus-visible{ outline:3px solid var(--onair); outline-offset:2px; }
   .t-play{ background:var(--sage); }
   .t-play.connecting{ background:#c9bda8; animation:pulse 1s steps(2) infinite; }
   .t-play.on{ opacity:.55; }
@@ -147,6 +91,7 @@
   .t-stop{ background:var(--paper); color:var(--onair); }
   .t-stop.dim{ opacity:.35; }
 
+  /* ── Bloques de info ── */
   .meta{ display:grid; gap:12px; }
   .row{ padding:0; overflow:hidden; }
   .row .head{ display:flex; justify-content:space-between; align-items:center; padding:12px 14px; cursor:pointer; user-select:none; }
@@ -164,16 +109,16 @@
   .history li{ font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
   .history li:first-child{ border-top:none; }
   .reqs li{ font-weight:700; padding:3px 0; }
-  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:monospace; font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
+  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
   .djlog pre b{ color:#7a6437; }
   .djlog .empty{ font-size:11px; color:var(--soft); padding:2px 0; }
 
   .ask{ padding:14px; }
   .ask form{ display:flex; gap:0; }
-  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none; background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; }
+  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none; background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; min-width:0; }
   .ask input:focus{ outline:none; background:#fffdf3; }
   .ask button{ padding:0 20px; border:3px solid var(--line); background:var(--rose); color:var(--ink); font-family:inherit; font-weight:900; text-transform:uppercase; letter-spacing:1px; cursor:pointer; }
-  .ask button:active{ transform:translate(2px,2px); box-shadow:none; }
+  .ask button:active{ transform:translate(2px,2px); }
   .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
 
   .foot{ display:flex; justify-content:space-between; gap:8px; padding:8px 14px; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft); background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
@@ -181,26 +126,17 @@
   @media (max-width:480px){
     .stack{ gap:11px; }
     .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
+    .cass{ filter:drop-shadow(4px 4px 0 var(--line)); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
-    :root{ --r-max:68px; --r-min:22px; }
-    .reel-hole{ width:72px; height:72px; }
-    .hub{ width:22px; height:22px; }
-    .side-letter{ font-size:26px; }
-    .title{ font-size:14px; }
-    .cover{ width:42px; height:42px; }
+    .transport{ margin-top:11px; }
   }
   @media (max-width:360px){
     .bar > *{ padding:9px 8px; letter-spacing:1px; font-size:12px; }
     .brand{ font-size:12px; }
-    :root{ --r-max:56px; --r-min:18px; }
-    .reel-hole{ width:60px; height:60px; }
-    .hub{ width:18px; height:18px; }
-    .side-letter{ font-size:22px; }
-    .title{ font-size:13px; gap:7px; }
-    .cover{ width:36px; height:36px; }
     .stack{ gap:9px; }
   }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
 </head>
 <body>
@@ -211,56 +147,180 @@
       <span class="onair"><span class="led"></span> ON AIR</span>
     </div>
 
+    <div class="blk card">
+      <div class="card-bot">
+        <span class="card-tag" id="state-tag">Ahora suena</span>
+        <span class="card-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
+        <div class="songbar" id="prog" style="display:none"><i></i></div>
+      </div>
+    </div>
+
     <div class="cass-wrap">
       <div class="flipper" id="flipper">
-        <div class="blk cass">
-          <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i><i class="scr bc"></i>
-          <div class="label">
-            <div class="lbl-top">
-              <div class="now-row">
-                <div class="cover" id="cover"></div>
-                <div class="now-text">
-                  <div class="k">Ahora suena</div>
-                  <div class="title">
-                    <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
-                    <span id="title">SINTONIZANDO</span>
-                  </div>
-                  <div class="artist" id="artist"></div>
-                </div>
-              </div>
-            </div>
-            <div class="lbl-mid">
-              <div class="side-letter" id="side-label">A</div>
-              <div class="tape-zone" id="tapeZone">
-                <svg class="tape-layer" id="tapeLayer">
-                  <path class="tape-shadow" id="tapeShadow" />
-                  <path class="tape-path" id="tapePath" />
-                </svg>
-                <div class="reel-row">
-                  <div class="reel-hole l"><div class="pile l" id="pile-l"></div><div class="hub l"></div></div>
-                  <div class="reel-hole r"><div class="pile r" id="pile-r"></div><div class="hub r"></div></div>
-                </div>
-                <div class="gauge" id="prog" style="display:none">
-                  <div class="gauge-track"></div>
-                  <div class="gauge-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                  <div class="gauge-dot"></div>
-                </div>
-                <div class="mech">
-                  <div class="mech-guide l"></div>
-                  <div class="mech-cap l"></div>
-                  <div class="mech-head"></div>
-                  <div class="mech-cap r"></div>
-                  <div class="mech-guide r"></div>
-                </div>
-              </div>
-            </div>
-            <div class="lbl-bot">
-              <span class="lbl-tag">RADIO·DJ 88.7</span>
-              <span class="lbl-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
-            </div>
-          </div>
-        </div>
+        <!-- Casete a escala real: 100 x 64 mm  ->  400 x 256 u  (1 mm = 4 u) -->
+        <svg class="cass" viewBox="0 0 400 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casete en reproducción">
+          <defs>
+            <linearGradient id="gShell" x1="0" y1="0" x2=".3" y2="1">
+              <stop offset="0" stop-color="#a3bec1"/><stop offset=".32" stop-color="#87a7ac"/>
+              <stop offset=".72" stop-color="#688a8f"/><stop offset="1" stop-color="#4e7074"/>
+            </linearGradient>
+            <linearGradient id="gWin" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#5f4229"/><stop offset=".6" stop-color="#4a3220"/>
+              <stop offset="1" stop-color="#301d11"/>
+            </linearGradient>
+            <linearGradient id="gGlass" x1="0" y1="0" x2=".8" y2="1">
+              <stop offset="0" stop-color="#fff" stop-opacity=".14"/>
+              <stop offset=".38" stop-color="#fff" stop-opacity=".02"/>
+              <stop offset=".52" stop-color="#fff" stop-opacity=".08"/>
+              <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+            </linearGradient>
+            <radialGradient id="gPack" cx="46%" cy="38%" r="66%">
+              <stop offset="0" stop-color="#3d2c18"/><stop offset=".5" stop-color="#241809"/>
+              <stop offset="1" stop-color="#0d0904"/>
+            </radialGradient>
+            <radialGradient id="gScrew" cx="34%" cy="30%" r="70%">
+              <stop offset="0" stop-color="#e2d5b6"/><stop offset=".6" stop-color="#8f7f5f"/>
+              <stop offset="1" stop-color="#4d4231"/>
+            </radialGradient>
+
+            <!-- rollo de cinta: r 46 (vacío) … 78 (lleno) -->
+            <g id="packArt">
+              <circle r="78" fill="url(#gPack)"/>
+              <g fill="none" stroke="#6f5230" stroke-width=".7" opacity=".38">
+                <circle r="51"/><circle r="55"/><circle r="59"/><circle r="63"/>
+                <circle r="67"/><circle r="71"/><circle r="74.5"/><circle r="77"/>
+              </g>
+              <path d="M0,-47 L0,-77.4" stroke="#b3966a" stroke-width="1.4" opacity=".3"/>
+              <path d="M0,47 L0,77.4" stroke="#000" stroke-width="2" opacity=".3"/>
+            </g>
+
+            <!-- bobina: brida 44u = 11 mm, como el carrete real -->
+            <g id="hubArt">
+              <circle r="44" fill="#d9cdb2"/>
+              <path d="M0,0 L16,-41 A44 44 0 0 0 -16,-41 Z" fill="#c8443a" opacity=".9"/>
+              <g fill="#3b3226" opacity=".55">
+                <rect x="-6" y="-39" width="12" height="13" rx="3"/>
+                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(60)"/>
+                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(120)"/>
+                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(180)"/>
+                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(240)"/>
+                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(300)"/>
+              </g>
+              <circle r="44" fill="none" stroke="#4b4030" stroke-width="1.6"/>
+              <circle r="24" fill="#efe5cd" stroke="#8c7c58" stroke-width="1.2"/>
+              <circle r="18" fill="#0e0a06"/>
+              <g fill="#efe5cd">
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1"/>
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(60)"/>
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(120)"/>
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(180)"/>
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(240)"/>
+                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(300)"/>
+              </g>
+            </g>
+
+            <!-- guía de cinta de esquina -->
+            <g id="guideArt">
+              <circle r="8" fill="#241c13" stroke="#a08e68" stroke-width="1.3"/>
+              <circle r="3" fill="#a08e68"/>
+            </g>
+
+            <g id="screwArt">
+              <circle r="7" fill="url(#gScrew)" stroke="#26332f" stroke-width="1.2"/>
+              <path d="M-3.4,-3.4 L3.4,3.4 M3.4,-3.4 L-3.4,3.4" stroke="#3a3328" stroke-width="1.6"/>
+            </g>
+
+            <!-- carcasa: rectángulo redondeado con la escotadura del cabezal -->
+            <path id="shell" d="M14,1.5 H386 A12.5 12.5 0 0 1 398.5,14 V242 A12.5 12.5 0 0 1 386,254.5
+                                 H14 A12.5 12.5 0 0 1 1.5,242 V14 A12.5 12.5 0 0 1 14,1.5 Z"/>
+            <!-- ventana + escotadura que baja al canto inferior -->
+            <path id="win" d="M30,30 H370 A10 10 0 0 1 380,40 V226 A10 10 0 0 1 370,236
+                              H286 L290,256 H110 L114,236 H30 A10 10 0 0 1 20,226 V40 A10 10 0 0 1 30,30 Z"/>
+            <clipPath id="cWin"><use href="#win"/></clipPath>
+            <clipPath id="cL"><circle id="clipL" cx="121" cy="116" r="78"/></clipPath>
+            <clipPath id="cR"><circle id="clipR" cx="279" cy="116" r="46"/></clipPath>
+          </defs>
+
+          <!-- ── carcasa ── -->
+          <use href="#shell" fill="url(#gShell)" stroke="#22302f" stroke-width="3"/>
+          <use href="#shell" fill="none" stroke="#fff" stroke-width="1" opacity=".16" transform="translate(0,2)"/>
+          <rect x="9" y="9" width="382" height="238" rx="9" fill="none" stroke="#fff" stroke-width="1" opacity=".09"/>
+          <!-- rebajes de las lengüetas de protección (canto superior) -->
+          <path d="M12,3 h30 v11 h-30 z M358,3 h30 v11 h-30 z" fill="#000" opacity=".14"/>
+
+          <!-- ── ventana ── -->
+          <use href="#win" fill="url(#gWin)"/>
+
+          <g clip-path="url(#cWin)">
+            <use href="#win" fill="none" stroke="#000" stroke-width="10" opacity=".4"/>
+
+            <!-- bobina izquierda: SUMINISTRO (se vacía) -->
+            <g clip-path="url(#cL)"><g id="reelL">
+              <use href="#packArt" x="121" y="116"/><use href="#hubArt" x="121" y="116"/>
+            </g></g>
+
+            <!-- bobina derecha: RECOGIDA (se llena) -->
+            <g clip-path="url(#cR)"><g id="reelR">
+              <use href="#packArt" x="279" y="116"/><use href="#hubArt" x="279" y="116"/>
+            </g></g>
+
+            <!-- poste central de la carcasa -->
+            <circle cx="200" cy="180" r="9" fill="#5d7d80" stroke="#26332f" stroke-width="1.4"/>
+            <circle cx="200" cy="180" r="3.6" fill="#26332f"/>
+
+            <!-- guías de cinta -->
+            <use href="#guideArt" x="35" y="226"/>
+            <use href="#guideArt" x="365" y="226"/>
+
+            <!-- cabezal + almohadilla (detrás de la cinta: la cinta los toca) -->
+            <rect x="170" y="236" width="60" height="22" rx="2" fill="#2c2c30" stroke="#71717a" stroke-width="1"/>
+            <rect x="176" y="240" width="48" height="6" rx="1.5" fill="#4c4c54"/>
+            <path d="M200,236 V258" stroke="#71717a" stroke-width="1" opacity=".7"/>
+            <path d="M200,232 V216" stroke="#9a978e" stroke-width="1.6" opacity=".8"/>
+            <rect x="186" y="230" width="28" height="9" rx="2" fill="#5f5c56" stroke="#2b2823" stroke-width="1"/>
+
+            <!-- ── CINTA ── izquierda (suministro) → cabezal → derecha (recogida) -->
+            <path class="tape-shadow" id="tapeShadow"/>
+            <path class="tape-body"   id="tapePath"/>
+            <path class="tape-sheen"  id="tapeSheen"/>
+
+            <!-- ── etiqueta de papel (título/artista a marcador) ── -->
+            <g id="paper" transform="rotate(-.6 200 66)">
+              <rect class="paper-label" x="36" y="36" width="328" height="60" rx="3" stroke="#d9cba6" stroke-width="1"/>
+              <rect x="36" y="36" width="328" height="60" rx="3" fill="none" stroke="#000" stroke-width="1" opacity=".06"/>
+              <line class="label-line" x1="46" y1="70" x2="354" y2="70"/>
+              <line class="label-line" x1="46" y1="86" x2="354" y2="86"/>
+              <text class="label-side" x="352" y="52" text-anchor="end" id="paper-side">A</text>
+              <text class="label-marker small" x="47" y="52" id="paper-kicker">RADIO·DJ 88.7</text>
+              <text class="label-marker big"   x="47" y="67" id="paper-title">—</text>
+              <text class="label-marker small" x="47" y="83" id="paper-artist"></text>
+            </g>
+
+            <use href="#win" fill="url(#gGlass)"/>
+          </g>
+
+          <use href="#win" fill="none" stroke="#22302f" stroke-width="2"/>
+
+          <!-- ── canto inferior: aberturas ── -->
+          <g fill="#1b2523" stroke="#2b3a3c" stroke-width="1">
+            <rect x="88" y="238" width="28" height="18" rx="3"/>
+            <rect x="284" y="238" width="28" height="18" rx="3"/>
+            <circle cx="134" cy="247" r="8.5"/>
+            <circle cx="266" cy="247" r="8.5"/>
+          </g>
+          <g fill="none" stroke="#fff" stroke-width="1" opacity=".18">
+            <path d="M126,245 A8.5 8.5 0 0 1 142,245"/><path d="M258,245 A8.5 8.5 0 0 1 274,245"/>
+            <path d="M88,239 h28"/><path d="M284,239 h28"/>
+          </g>
+
+          <!-- ── tornillos + serigrafía ── -->
+          <use href="#screwArt" x="18" y="16"/><use href="#screwArt" x="382" y="16"/>
+          <use href="#screwArt" x="14" y="243"/><use href="#screwArt" x="386" y="243"/>
+          <text class="shell-side" id="side-print" x="42" y="24">A</text>
+          <text class="shell-print" x="358" y="23" text-anchor="end">TYPE I · NORMAL</text>
+        </svg>
       </div>
+
       <div class="transport">
         <button class="t-play" id="play"><span id="play-ico">▶</span> <span id="play-txt">PLAY</span></button>
         <button class="t-stop dim" id="stop">■ STOP</button>
@@ -394,8 +454,10 @@
       lastTitle = c.title;
     }
     metaTitle = c.title||''; metaArtist = c.artist||'';
-    $('title').textContent = (metaTitle||'—').toUpperCase();
-    $('artist').textContent = metaArtist;
+    const clip = (s,n)=> s && s.length>n ? s.slice(0,n-1).trimEnd()+'…' : (s||'');
+    $('paper-title').textContent  = clip(metaTitle,26) || '—';
+    $('paper-artist').textContent = clip(metaArtist,34);
+    $('paper-kicker').textContent = metaTitle ? 'Ahora suena' : 'RADIO·DJ 88.7';
     $('next').textContent = j.next ? (j.next.title + (j.next.artist?(' — '+j.next.artist):'')) : '—';
     const rs = j.requests||[];
     if(rs.length){ $('reqwrap').style.display=''; $('reqlist').innerHTML=rs.map(r=>'<li>'+esc(r.text)+'</li>').join(''); }
@@ -441,127 +503,123 @@
     fetch('/cover').then(r=> r.ok ? r.blob() : Promise.reject()).then(b=>{
       if(coverURL) URL.revokeObjectURL(coverURL);
       coverURL = URL.createObjectURL(b);
-      $('cover').style.backgroundImage = 'url('+coverURL+')';
-      $('cover').classList.add('has');
       updateMediaMeta();
-    }).catch(()=>{ $('cover').classList.remove('has'); $('cover').style.backgroundImage=''; });
+    }).catch(()=>{ coverURL = null; });
   }
 
   function flipCassette(){
     const fp = $('flipper');
     if(!fp) return;
-    fp.style.transition = 'transform .38s cubic-bezier(.5,0,.7,.2)';
+    fp.style.transition = 'transform .4s cubic-bezier(.5,0,.7,.2)';
     fp.style.transform = 'rotateY(90deg)';
     setTimeout(()=>{
       sideA = !sideA;
-      const sl = $('side-label');
-      if(sl) sl.textContent = sideA ? 'A' : 'B';
-      const deck = $('deck');
-      deck.classList.add('no-trans');
-      syncReels(0);
-      requestAnimationFrame(()=>requestAnimationFrame(()=>deck.classList.remove('no-trans')));
-      fp.style.transition = 'transform .38s cubic-bezier(.3,.4,.5,1)';
+      const letter = sideA ? 'A' : 'B';
+      $('side-print').textContent = letter;
+      $('paper-side').textContent = letter;
+      angL = angR = 0; lastP = -1; applyReels(0);
+      fp.style.transition = 'transform .4s cubic-bezier(.3,.4,.5,1)';
       fp.style.transform = 'rotateY(0deg)';
-    }, 380);
+    }, 400);
+  }
+
+  /* ══════════════ MECANISMO ══════════════
+     viewBox 400 x 256 = 100 x 64 mm reales (1 mm = 4 u).
+     Ejes separados 158 u (39,5 mm), guías al 8,7 % del ancho, rollo lleno
+     Ø 39 mm — medidas tomadas de las fotos de referencia.
+
+     Reproducción hacia adelante: la cinta corre de IZQUIERDA a DERECHA
+     (el cabezal de borrado entra por la abertura izquierda, antes que el de
+     lectura, y el cabrestante muerde a la derecha, después del cabezal).
+     Por eso la bobina izquierda entrega cinta y la derecha la recoge, y las
+     dos giran en el MISMO sentido, aquí antihorario.
+     Si querés el sentido contrario, poné REVERSA = true.                     */
+  const REVERSA = true;   // supply reel on RIGHT, take-up on LEFT, clockwise spin
+
+  const HUB_L = {x:121, y:116}, HUB_R = {x:279, y:116};
+  const GUI_L = {x:35,  y:226}, GUI_R = {x:365, y:226};
+  const R_GUI = 8, R_MAX = 78, R_MIN = 46;
+  const TAPE_Y = GUI_L.y + R_GUI;      // 234 — la cinta corre pegada al borde inferior
+  const DSQ = R_MAX*R_MAX - R_MIN*R_MIN;
+  const SPEED = 105;                   // u/s ≈ 4,76 cm/s reales
+  const DEG = 180/Math.PI;
+  const SPIN = REVERSA ? 1 : -1;       // -1 = antihorario
+  let rL = R_MAX, rR = R_MIN, angL = 0, angR = 0;
+
+  document.documentElement.style.setProperty('--flow', (REVERSA ? 34 : -34) + 'px');
+
+  const n1 = v => Math.round(v*10)/10;
+
+  // Tangente exterior común entre rollo (c1,r1) y guía (c2,r2):
+  // la normal compartida cumple  d·n = r1 - r2  →  n = d̂ girado ±acos((r1-r2)/|d|).
+  function tangent(c1, r1, c2, r2, side){
+    const dx = c2.x-c1.x, dy = c2.y-c1.y, d = Math.hypot(dx,dy) || 1;
+    const a = Math.atan2(dy,dx);
+    const b = Math.acos(Math.max(-1, Math.min(1, (r1-r2)/d)));
+    const u1 = a+b, u2 = a-b;
+    const u = side < 0 ? (Math.cos(u1) < Math.cos(u2) ? u1 : u2)
+                       : (Math.cos(u1) > Math.cos(u2) ? u1 : u2);
+    return { p:{x:c1.x + r1*Math.cos(u), y:c1.y + r1*Math.sin(u)},
+             q:{x:c2.x + r2*Math.cos(u), y:c2.y + r2*Math.sin(u)} };
+  }
+
+  // rollo → tramo recto → arco por FUERA de la guía → tramo del cabezal → guía → rollo
+  function tapeD(a, b){
+    return `M ${n1(a.p.x)},${n1(a.p.y)} L ${n1(a.q.x)},${n1(a.q.y)}`
+         + ` A ${R_GUI} ${R_GUI} 0 0 0 ${GUI_L.x},${TAPE_Y}`
+         + ` L ${GUI_R.x},${TAPE_Y}`
+         + ` A ${R_GUI} ${R_GUI} 0 0 0 ${n1(b.q.x)},${n1(b.q.y)}`
+         + ` L ${n1(b.p.x)},${n1(b.p.y)}`;
+  }
+
+  let lastP = -1;
+  function applyReels(p){
+    p = Math.max(0, Math.min(1, p));
+    if(Math.abs(p - lastP) < 0.0002) return;
+    lastP = p;
+    const vacia = Math.sqrt(Math.max(R_MIN*R_MIN, R_MAX*R_MAX - p*DSQ));
+    const llena = Math.sqrt(Math.max(R_MIN*R_MIN, R_MIN*R_MIN + p*DSQ));
+    rL = REVERSA ? llena : vacia;
+    rR = REVERSA ? vacia : llena;
+    $('clipL').setAttribute('r', rL.toFixed(2));
+    $('clipR').setAttribute('r', rR.toFixed(2));
+    const d = tapeD(tangent(HUB_L, rL, GUI_L, R_GUI, -1),
+                    tangent(HUB_R, rR, GUI_R, R_GUI, +1));
+    ['tapeShadow','tapePath','tapeSheen'].forEach(id => $(id).setAttribute('d', d));
+  }
+
+  function currentP(){
+    if(!startedAt || !duration) return Math.min(1, batchIdx / BATCH_SIZE);
+    const el = (Date.now() - startedAt)/1000;
+    const ps = Math.min(1, Math.max(0, el/duration));
+    return Math.min(1, (batchIdx + ps) / BATCH_SIZE);
+  }
+
+  let lastTs = 0, frameN = 0;
+  function frame(ts){
+    const dt = lastTs ? Math.min(.05, (ts-lastTs)/1000) : 0;
+    lastTs = ts;
+    if(deck.classList.contains('playing')){
+      angL = (angL + SPIN*(SPEED/rL)*dt*DEG) % 360;   // ω = v / r
+      angR = (angR + SPIN*(SPEED/rR)*dt*DEG) % 360;
+      $('reelL').setAttribute('transform', `rotate(${angL.toFixed(2)} ${HUB_L.x} ${HUB_L.y})`);
+      $('reelR').setAttribute('transform', `rotate(${angR.toFixed(2)} ${HUB_R.x} ${HUB_R.y})`);
+    }
+    if((frameN++ % 6) === 0) applyReels(currentP());
+    requestAnimationFrame(frame);
   }
 
   function tickProgress(){
-    if(!startedAt || !duration){ $('prog').style.display='none'; syncReels(batchIdx / BATCH_SIZE); return; }
+    if(!startedAt || !duration){ $('prog').style.display='none'; return; }
     $('prog').style.display='';
     const el = (Date.now() - startedAt)/1000;
-    const pSong = Math.min(1, Math.max(0, el/duration));
-    syncReels((batchIdx + pSong) / BATCH_SIZE);
+    document.documentElement.style.setProperty('--song', Math.min(1, Math.max(0, el/duration)).toFixed(4));
     $('elapsed').textContent = fmt(el);
     $('dur-total').textContent = fmt(duration);
   }
 
-  // d1/d2 are pile DIAMETERS (--r1/--r2 = width/height). Divided by 2 for tangent radius.
-  function syncReels(p){
-    const cs = getComputedStyle(document.documentElement);
-    const dMax = parseFloat(cs.getPropertyValue('--r-max')) || 86;
-    const dMin = parseFloat(cs.getPropertyValue('--r-min')) || 26;
-    const dSqDelta = dMax*dMax - dMin*dMin;
-    const d1 = Math.sqrt(dMin*dMin + p * dSqDelta);
-    const d2 = Math.sqrt(Math.max(0, dMax*dMax - p * dSqDelta));
-    const baseDur = 2.8;
-    const root = document.documentElement.style;
-    root.setProperty('--fill', p.toFixed(4));
-    root.setProperty('--r1', d1.toFixed(1)+'px');
-    root.setProperty('--r2', d2.toFixed(1)+'px');
-    root.setProperty('--omega1', (baseDur * d1 / dMax).toFixed(2)+'s');
-    root.setProperty('--omega2', (baseDur * d2 / dMax).toFixed(2)+'s');
-
-    updateTapePath(d1 / 2, d2 / 2);
-    const layer = document.querySelector('.tape-layer');
-    if(layer) layer.classList.toggle('leader', p < 0.05 || p > 0.95);
-  }
-
-  // ── Geometry helpers ──
-  function getCenter(el, zone) {
-    if(!el) return null;
-    const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
-    return { x: r.left + r.width/2 - z.left, y: r.top + r.height/2 - z.top };
-  }
-  function getTopPoint(el, zone) {
-    if(!el) return null;
-    const r = el.getBoundingClientRect(), z = zone.getBoundingClientRect();
-    return { x: r.left + r.width/2 - z.left, y: r.top - z.top };
-  }
-
-  // Outer tangent point on circle (c, rad) toward target t.
-  // acos(rad/dist) formula: two candidates at alpha ± gamma, pick outer by dx sign.
-  // (Gemini's asin formula gave wrong tangent for left reel — verified numerically.)
-  function getOuterTangent(c, rad, t, isLeft) {
-    const dx = t.x - c.x, dy = t.y - c.y, d = Math.hypot(dx, dy);
-    if(d <= rad * 1.05) return { x: c.x + rad * dx/(d||1), y: c.y + rad * dy/(d||1) };
-    const a = Math.atan2(dy, dx), g = Math.acos(rad / d);
-    const c1 = { x: c.x + rad * Math.cos(a + g), y: c.y + rad * Math.sin(a + g) };
-    const c2 = { x: c.x + rad * Math.cos(a - g), y: c.y + rad * Math.sin(a - g) };
-    return (dx < 0 ? c1.x <= c2.x : c1.x >= c2.x) ? c1 : c2;
-  }
-
-  const rnd = n => Math.round(n * 10) / 10;
-
-  // Tape path: tangent → guide-L → Q-curve to bottom → flat across head → Q-curve up → guide-R → tangent.
-  // Q (quadratic Bézier) curves smoothly bend the tape around guide pins.
-  function updateTapePath(r1, r2){
-    const zone = $('tapeZone');
-    if(!zone) return;
-
-    if(r1 === undefined){
-      const cs = getComputedStyle(document.documentElement);
-      r1 = (parseFloat(cs.getPropertyValue('--r1')) || 86) / 2;
-      r2 = (parseFloat(cs.getPropertyValue('--r2')) || 26) / 2;
-    }
-
-    const cL = getCenter(document.querySelector('.reel-hole.l'), zone);
-    const cR = getCenter(document.querySelector('.reel-hole.r'), zone);
-    const gL = getCenter(document.querySelector('.mech-guide.l'), zone);
-    const gR = getCenter(document.querySelector('.mech-guide.r'), zone);
-    const head = getTopPoint(document.querySelector('.mech-head'), zone);
-
-    if(!cL || !cR || !gL || !gR || !head) return;
-
-    const pL = getOuterTangent(cL, r1, gL, true);
-    const pR = getOuterTangent(cR, r2, gR, false);
-    const yBottom = head.y + 1;
-
-    const d = `M ${rnd(pL.x)},${rnd(pL.y)} ` +
-              `L ${rnd(gL.x)},${rnd(gL.y - 3)} ` +
-              `Q ${rnd(gL.x)},${rnd(yBottom)} ${rnd(gL.x + 8)},${rnd(yBottom)} ` +
-              `L ${rnd(gR.x - 8)},${rnd(yBottom)} ` +
-              `Q ${rnd(gR.x)},${rnd(yBottom)} ${rnd(gR.x)},${rnd(gR.y - 3)} ` +
-              `L ${rnd(pR.x)},${rnd(pR.y)}`;
-
-    const tp = $('tapePath');
-    const ts = $('tapeShadow');
-    if(tp) tp.setAttribute('d', d);
-    if(ts) ts.setAttribute('d', d);
-  }
-
-  syncReels(0);
-  requestAnimationFrame(updateTapePath);
-  window.addEventListener('resize', updateTapePath);
+  applyReels(0);
+  requestAnimationFrame(frame);
 
   refresh();
   refreshDJLog();
