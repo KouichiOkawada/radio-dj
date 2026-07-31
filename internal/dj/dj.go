@@ -37,6 +37,7 @@ type (
 	}
 	// Req is a listener request (with its match, if any) for the director.
 	Req struct {
+		From   string `json:"from,omitempty"`
 		Query  string `json:"query"`
 		Title  string `json:"title,omitempty"`
 		Artist string `json:"artist,omitempty"`
@@ -116,11 +117,17 @@ func (d *DJ) SayMidroll(title, artist string) string {
 }
 
 // SayRequest phrases a listener's request acknowledgment.
-func (d *DJ) SayRequest(title, artist, req string) string {
+func (d *DJ) SayRequest(title, artist, from, req string) string {
+	dedic := " del oyente"
+	if from != "" {
+		dedic = " de " + from
+	}
 	return d.Say(d.p.Sub("request_ack", map[string]string{
 		"req":    req,
 		"title":  title,
 		"credit": d.credit(artist, ""),
+		"from":   from,
+		"dedic":  dedic,
 	}))
 }
 

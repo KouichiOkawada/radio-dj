@@ -83,8 +83,8 @@ func Intro(d *dj.DJ, t library.Track) string {
 }
 
 // RequestAck thanks a listener's request before playing it.
-func RequestAck(d *dj.DJ, t library.Track, req string) string {
-	return d.SayRequest(t.Title, t.Artist, req)
+func RequestAck(d *dj.DJ, t library.Track, from, req string) string {
+	return d.SayRequest(t.Title, t.Artist, from, req)
 }
 
 // weather fetches current conditions from Open-Meteo (free, no key) and asks

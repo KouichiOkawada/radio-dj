@@ -256,14 +256,18 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		if len(ms) > 0 {
 			t := ms[0]
 			if cfg.DJEnabled {
-				addVoice(skills.RequestAck(djx, t, req.Text), false)
+				addVoice(skills.RequestAck(djx, t, req.From, req.Text), false)
 			}
 			addTrack(t)
 			lib.MarkPlayed(t.Src)
-			reqCtx = append(reqCtx, dj.Req{Query: req.Text, Title: t.Title, Artist: t.Artist})
+			reqCtx = append(reqCtx, dj.Req{From: req.From, Query: req.Text, Title: t.Title, Artist: t.Artist})
 			matched++
-			log.Printf("[request] %q → %s — %s", req.Text, t.Title, t.Artist)
-			segs[len(segs)-1].Req = fmt.Sprintf("%q → %s — %s", req.Text, t.Title, t.Artist)
+			who := req.Text
+			if req.From != "" {
+				who = req.From + ": " + req.Text
+			}
+			log.Printf("[request] %q → %s — %s", who, t.Title, t.Artist)
+			segs[len(segs)-1].Req = fmt.Sprintf("%q → %s — %s", who, t.Title, t.Artist)
 		} else {
 			log.Printf("[request] no match %q", req.Text)
 		}

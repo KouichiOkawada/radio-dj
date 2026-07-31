@@ -33,6 +33,7 @@ type Track struct {
 }
 
 type Request struct {
+	From      string    `json:"from,omitempty"`
 	Text      string    `json:"text"`
 	AskedAt   time.Time `json:"askedAt"`
 	Status    string    `json:"status"` // queued | matched | not-found
@@ -107,8 +108,8 @@ func (s *Server) MarkPlaying(on bool) {
 }
 
 // AddRequest enqueues a listener request; returns it with an id-ish hint.
-func (s *Server) AddRequest(text string) Request {
-	r := Request{Text: text, AskedAt: time.Now(), Status: "queued"}
+func (s *Server) AddRequest(from, text string) Request {
+	r := Request{From: from, Text: text, AskedAt: time.Now(), Status: "queued"}
 	s.mu.Lock()
 	s.requests = append(s.requests, r)
 	s.mu.Unlock()
@@ -332,12 +333,15 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
 			return
 		}
-		var body struct{ Text string `json:"text"` }
+		var body struct {
+			From string `json:"from"`
+			Text string `json:"text"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
 			http.Error(w, `{"error":"missing text"}`, http.StatusBadRequest)
 			return
 		}
-		req := s.AddRequest(body.Text)
+		req := s.AddRequest(body.From, body.Text)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		_ = json.NewEncoder(w).Encode(req)

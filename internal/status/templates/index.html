@@ -32,7 +32,7 @@
       repeating-linear-gradient(90deg, rgba(34,28,22,.04) 0 2px, transparent 2px 28px);
   }
   .stack{ width:100%; max-width:540px; margin:auto; display:grid; gap:14px; }
-  .blk{ background:var(--paper); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
+  .blk{ background:var(--paper); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); min-width:0; }
 
   /* ── Barra superior ── */
   .bar{ display:flex; align-items:stretch; }
@@ -124,43 +124,52 @@
   /* ── Panel con pestañas (debajo de la botonera) ── */
   .tabs{ padding:0; overflow:hidden; }
   .tab-bar{ display:flex; }
-  .tab{ flex:1; padding:13px 6px 15px; border:0; background:#cfc7b5; cursor:pointer;
+  .tab{ flex:1; padding:12px 6px 14px; border:0; background:#cfc7b5; cursor:pointer;
     font-family:inherit; font-size:10px; font-weight:900; letter-spacing:.8px; text-transform:uppercase;
     color:#6b5d4a; border-right:3px solid var(--line); border-bottom:3px solid var(--line);
     position:relative; white-space:nowrap;
-    transition:background .12s; -webkit-tap-highlight-color:transparent; }
+    box-shadow:0 4px 0 #a39a82;
+    transition:transform .08s ease-out, box-shadow .08s ease-out, background .12s;
+    -webkit-tap-highlight-color:transparent; }
   .tab:last-child{ border-right:none; }
   /* tira de color inferior — cada pestaña con identidad propia */
-  .tab::after{ content:""; position:absolute; left:0; right:0; bottom:0; height:6px; }
+  .tab::after{ content:""; position:absolute; left:0; right:0; bottom:0; height:5px; }
   .tab[data-tab="history"]::after{ background:var(--hist); }
   .tab[data-tab="djlog"]::after{ background:var(--sage); }
   .tab[data-tab="reqs"]::after{ background:var(--rose); }
+  /* activa = hundida (flush, sin sombra) + rellena con su color */
+  .tab.active{ box-shadow:none; transform:translateY(4px); }
   .tab.active::after{ display:none; }
-  .tab.active[data-tab="history"]{ background:var(--hist); color:#fff5e6; border-bottom:none; }
-  .tab.active[data-tab="djlog"]{ background:var(--sage); color:var(--ink); border-bottom:none; }
-  .tab.active[data-tab="reqs"]{ background:var(--rose); color:var(--ink); border-bottom:none; }
+  .tab.active[data-tab="history"]{ background:var(--hist); color:#fff5e6; }
+  .tab.active[data-tab="djlog"]{ background:var(--sage); color:var(--ink); }
+  .tab.active[data-tab="reqs"]{ background:var(--rose); color:var(--ink); }
+  .tab:not(.active):active{ transform:translateY(2px); box-shadow:0 2px 0 #a39a82; }
   .tab:not(.active):hover{ background:#dfd9c8; }
   .tab .badge{ display:inline-block; min-width:15px; padding:1px 4px; margin-left:4px; border-radius:8px;
     background:var(--onair); color:#fff5e6; font-size:7px; line-height:1.5; vertical-align:middle; font-weight:900; }
   .tab-body{ padding:12px 14px; }
   .tab-body[hidden]{ display:none; }
   .tab-body ul{ margin:0; list-style:none; }
-  .tab-body li{ font-family:var(--font-mono); font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
+  .tab-body li{ font-family:var(--font-mono); font-size:11px; line-height:1.6; font-weight:700; padding:3px 0; color:var(--soft); border-top:1px dashed #d8ccb3; }
   .tab-body li:first-child{ border-top:none; }
+  .tab-body li b{ color:var(--ink); font-weight:900; }
   .tab-body .empty{ font-size:11px; color:var(--soft); padding:2px 0; font-weight:600; border:none; }
-  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:var(--font-mono); font-size:11px; line-height:1.5; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
+  .djlog pre{ margin:0; max-height:240px; overflow:auto; font-family:var(--font-mono); font-size:11px; line-height:1.6; color:#5a4a36; white-space:pre-wrap; word-break:break-word; }
   .djlog pre b{ color:#7a6437; }
 
-  .ask{ padding:14px; }
+  .ask{ padding:14px; min-width:0; }
   .ask[hidden]{ display:none; }
   .ask{ animation:askin .25s ease-out; }
   @keyframes askin{ from{ opacity:0; transform:translateY(-6px); } }
   .ask-rec{ display:flex; align-items:center; gap:8px; font-size:10px; font-weight:900; letter-spacing:2px; text-transform:uppercase; color:var(--onair); margin-bottom:10px; }
   .rec-dot{ width:11px; height:11px; border-radius:50%; background:var(--onair); border:2px solid var(--line); animation:recpulse 1s steps(2) infinite; }
   @keyframes recpulse{ 50%{ opacity:.25; } }
-  .ask form{ display:flex; gap:0; }
-  .ask input{ flex:1; padding:13px; border:3px solid var(--line); border-right:none; background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; min-width:0; }
-  .ask input:focus{ outline:none; background:#fffdf3; }
+  .ask form{ display:flex; flex-wrap:wrap; }
+  .ask input{ padding:12px 13px; border:3px solid var(--line); background:#fff; color:var(--ink); font-family:inherit; font-size:14px; font-weight:700; min-width:0; }
+  #q-from{ flex:1 1 100%; border-bottom-width:0; font-size:13px; font-weight:600; color:var(--soft); }
+  #q-from:focus{ outline:none; background:#fffdf3; }
+  #q{ flex:1; border-right:none; }
+  #q:focus{ outline:none; background:#fffdf3; }
   .ask button{ padding:0 20px; border:3px solid var(--line); background:var(--rose); color:var(--ink); font-family:inherit; font-weight:900; text-transform:uppercase; letter-spacing:1px; cursor:pointer; }
   .ask button:active{ transform:translate(2px,2px); }
   .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
@@ -329,10 +338,10 @@
 
             <!-- ── etiqueta "Siguiente": sticker pequeño debajo de los rollos, sobre la cinta ── -->
             <g id="next-label" transform="rotate(.5 200 222)">
-              <rect class="paper-label" x="98" y="211" width="204" height="18" rx="2" stroke="#d9cba6" stroke-width=".8"/>
-              <rect x="98" y="211" width="204" height="18" rx="2" fill="none" stroke="#000" stroke-width=".6" opacity=".05"/>
-              <text font-size="7.5" fill="#9a7b3e" x="106" y="219" letter-spacing=".4">SIGUIENTE ▸</text>
-              <text font-size="9" fill="#2b2118" x="106" y="227" id="paper-next">—</text>
+              <rect class="paper-label" x="96" y="208" width="208" height="24" rx="2" stroke="#d9cba6" stroke-width=".8"/>
+              <rect x="96" y="208" width="208" height="24" rx="2" fill="none" stroke="#000" stroke-width=".6" opacity=".05"/>
+              <text font-size="8" fill="#9a7b3e" x="104" y="217" letter-spacing=".5">SIGUIENTE ▸</text>
+              <text font-size="11" fill="#2b2118" x="104" y="229" id="paper-next">—</text>
             </g>
 
           </g>
@@ -402,7 +411,8 @@
     <div class="blk ask" id="ask" hidden>
       <div class="ask-rec"><span class="rec-dot"></span> Grabando pedido — RDJ-0001</div>
       <form id="form">
-        <input id="q" placeholder="Decile al locutor qué querés escuchar…" autocomplete="off">
+        <input id="q-from" placeholder="Tu nombre (opcional)" autocomplete="off" maxlength="20">
+        <input id="q" placeholder="¿Qué querés escuchar y para quién?" autocomplete="off">
         <button type="submit">Enviar</button>
       </form>
       <div class="h">Dejá tu mensaje al aire · entra en la próxima tanda</div>
@@ -501,8 +511,9 @@
   $('form').addEventListener('submit', async e=>{
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
-    $('q').value='';
-    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:q})}); refresh(); refreshDJLog(); }catch(_){}
+    const from = $('q-from').value.trim();
+    $('q').value=''; $('q-from').value='';
+    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from, text:q})}); refresh(); refreshDJLog(); }catch(_){}
     const h = $('ask').querySelector('.h'); const prev = h.textContent;
     h.textContent = '✔ Grabado y enviado al locutor';
     setTimeout(()=>{ h.textContent = prev; setRec(false); }, 1400);
@@ -541,11 +552,14 @@
     } else {
       bpmEl.style.display = 'none';
     }
-    const nx = j.next ? clip(j.next.title,18) + (j.next.artist ? ' — ' + clip(j.next.artist,12) : '') : '—';
+    const nx = j.next ? clip(j.next.title,16) + (j.next.artist ? ' — ' + clip(j.next.artist,10) : '') : '—';
     $('paper-next').textContent = nx;
     const rs = j.requests||[];
     $('reqlist').innerHTML = rs.length
-      ? rs.map(r=>'<li>'+esc(r.text)+'</li>').join('')
+      ? rs.map(r=>{
+          const who = r.from ? '<b>'+esc(r.from)+'</b>: ' : '';
+          return '<li>'+who+esc(r.text)+'</li>';
+        }).join('')
       : '<li class="empty">Sin pedidos aún</li>';
     const rb = $('req-badge'); rb.hidden = rs.length===0; rb.textContent = rs.length;
 
