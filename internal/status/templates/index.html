@@ -121,31 +121,27 @@
   .key .dots i:nth-child(2){animation-delay:.15s}.key .dots i:nth-child(3){animation-delay:.3s}
   @keyframes bounce{ to{ opacity:.3; } }
 
-  /* ── Panel con pestañas (debajo de la botonera) ── */
-  .tabs{ padding:0; }
-  .tab-bar{ display:flex; margin-top:5px; }
-  .tab{ flex:1; padding:12px 6px 14px; border:0; background:#cfc7b5; cursor:pointer;
+  /* ── Pestañas tipo bricks neo-brutalistas (separadas, cada una con su color) ── */
+  .tab-bar{ display:flex; gap:5px; margin:8px 5px 0; position:relative; z-index:2; }
+  .tab{ flex:1; padding:10px 4px 12px; border:3px solid var(--line); cursor:pointer;
     font-family:inherit; font-size:10px; font-weight:900; letter-spacing:.8px; text-transform:uppercase;
-    color:#6b5d4a; border-right:3px solid var(--line); border-bottom:3px solid var(--line);
-    position:relative; white-space:nowrap;
-    transition:transform .1s ease-out, box-shadow .1s ease-out, background .12s;
+    white-space:nowrap; position:relative;
+    box-shadow:3px 3px 0 var(--line);
+    transition:transform .08s ease-out, box-shadow .08s ease-out, background .12s;
     -webkit-tap-highlight-color:transparent; }
-  .tab:last-child{ border-right:none; }
-  /* tira de color inferior — cada pestaña con identidad propia */
-  .tab::after{ content:""; position:absolute; left:0; right:0; bottom:0; height:5px; }
-  .tab[data-tab="history"]::after{ background:var(--hist); }
-  .tab[data-tab="djlog"]::after{ background:var(--sage); }
-  .tab[data-tab="reqs"]::after{ background:var(--rose); }
-  /* activa = levantada como pestaña de carpeta */
-  .tab.active{ transform:translateY(-5px); box-shadow:0 4px 0 #a39a82; z-index:2; }
-  .tab.active::after{ display:none; }
+  /* cada tab tiene su color siempre — inactiva oscurecida */
+  .tab[data-tab="history"]{ background:#6b5530; color:#d4c4a0; }
+  .tab[data-tab="djlog"]{ background:#5e7a5a; color:#c4d4c0; }
+  .tab[data-tab="reqs"]{ background:#a07060; color:#e8c4b8; }
+  /* activa = color a saturación full + levantada (folder tab) */
+  .tab.active{ transform:translateY(-4px); box-shadow:4px 5px 0 var(--line); z-index:3; }
   .tab.active[data-tab="history"]{ background:var(--hist); color:#fff5e6; }
-  .tab.active[data-tab="djlog"]{ background:var(--sage); color:var(--ink); }
-  .tab.active[data-tab="reqs"]{ background:var(--rose); color:var(--ink); }
-  .tab:not(.active):active{ background:#dfd9c8; }
-  .tab:not(.active):hover{ background:#dfd9c8; }
+  .tab.active[data-tab="djlog"]{ background:var(--sage); color:#1f3a1c; }
+  .tab.active[data-tab="reqs"]{ background:var(--rose); color:#6b2e22; }
+  .tab:not(.active):active{ transform:translateY(1px); box-shadow:2px 2px 0 var(--line); }
   .tab .badge{ display:inline-block; min-width:15px; padding:1px 4px; margin-left:4px; border-radius:8px;
     background:var(--onair); color:#fff5e6; font-size:7px; line-height:1.5; vertical-align:middle; font-weight:900; }
+  .tab-panel{ margin-top:-3px; position:relative; z-index:1; }
   .tab-body{ padding:12px 14px; }
   .tab-body[hidden]{ display:none; }
   .tab-body ul{ margin:0; list-style:none; }
@@ -390,12 +386,12 @@
       </div>
     </div>
 
-    <div class="blk tabs">
-      <div class="tab-bar">
-        <button class="tab active" data-tab="history">Sonó antes</button>
-        <button class="tab" data-tab="djlog">Locutor</button>
-        <button class="tab" data-tab="reqs">Pedidos<span class="badge" id="req-badge" hidden>0</span></button>
-      </div>
+    <div class="tab-bar">
+      <button class="tab active" data-tab="history">Sonó antes</button>
+      <button class="tab" data-tab="djlog">Locutor</button>
+      <button class="tab" data-tab="reqs">Pedidos<span class="badge" id="req-badge" hidden>0</span></button>
+    </div>
+    <div class="blk tab-panel">
       <div class="tab-body" id="tab-history">
         <ul id="history-list"></ul>
       </div>
