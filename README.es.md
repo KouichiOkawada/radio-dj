@@ -56,38 +56,59 @@ Sin Docker. Sin pesado. **~50 MB de RAM** — corre en una Raspberry Pi.
 |:---:|:---:|
 | <img src="docs/screenshots/dj-onair.png" alt="DJ al aire — UI desktop con cassette animado" width="100%" /> | <img src="docs/screenshots/mobile.png" alt="Vista mobile" width="280" /> |
 
-| Pedidos en vivo |
-|:---:|
-| <img src="docs/screenshots/requests.png" alt="Panel de pedidos — los oyentes piden canciones con su nombre" width="100%" /> |
-
 ---
 
-## 🚀 Instalación rápida (macOS, Apple Silicon)
+## 🚀 Instalación rápida
+
+### Una línea (recomendado)
 
 ```bash
-# 1. dependencias del sistema
-brew install icecast ffmpeg
-pipx install edge-tts          # cualquier TTS que escriba un archivo sirve
+curl -fsSL https://github.com/johncrash64/radio-dj/raw/master/install.sh | bash
+```
 
-# 2. compilá
+Detecta tu OS (macOS o Linux), instala `icecast` + `ffmpeg` + `edge-tts`, y
+descarga un binario precompilado (o compila desde fuente si no hay).
+
+### Desde fuente
+
+**macOS (Homebrew):**
+```bash
+brew install icecast ffmpeg
+pipx install edge-tts
+
 git clone https://github.com/johncrash64/radio-dj.git
 cd radio-dj && go build -o radio-dj .
+```
 
-# 3. configurá (o saltate y usá el wizard de onboarding al primer arranque)
+**Linux (apt):**
+```bash
+sudo apt-get install icecast2 ffmpeg
+pipx install edge-tts            # o: pip3 install --user edge-tts
+
+git clone https://github.com/johncrash64/radio-dj.git
+cd radio-dj && go build -o radio-dj .
+```
+
+### Configurá y lanzá
+
+Corré `radio-dj serve` — al primer arranque abre un **wizard de onboarding**
+que escribe todo a `~/.radio-dj/config.json`. O poné variables de entorno:
+
+```bash
 export ZAI_API_KEY=tu_key            # GLM-5.2 (cualquier OpenAI-compatible sirve)
 export RDJ_LIBRARY=~/Music/library   # tu carpeta de música
 export RDJ_LOCATION="La Paz"         # para la hora y el clima
 export RDJ_VOICE_CMD="edge-tts --voice es-CO-SalomeNeural --text {text} --write-media {out}"
-
-# 4. instalalo como servicio (siempre-on)
-./radio-dj install
 ```
 
-Listo. Abrí **http://localhost:7710** (UI) y **http://localhost:7702/stream.mp3** (stream).
-Desinstalar: `./radio-dj install`.
+### Servicio siempre-on (sobrevive reinicios)
 
-> **Instalación de una línea** (descarga un binario precompilado o compila desde fuente):
-> `curl -fsSL https://github.com/johncrash64/radio-dj/raw/master/install.sh | bash`
+```bash
+radio-dj install      # macOS → launchd agent · Linux → systemd user unit
+radio-dj uninstall    # parar y eliminar el servicio
+```
+
+Abrí **http://localhost:7710** (UI) y **http://localhost:7702/stream.mp3** (stream).
 
 ---
 
@@ -136,21 +157,70 @@ Referencia completa: **[docs/API.md](docs/API.md)** · **[docs/openapi.yaml](doc
 
 ---
 
-## ⚙️ Configuración (variables `RDJ_*`)
+## ⚙️ Configuración
 
-| Variable | Default | Qué |
-|---|---|---|
-| `RDJ_LIBRARY` | `~/Music/library` | carpeta de música |
-| `RDJ_SOURCE` | `folder` | `folder` o `navidrome` |
-| `RDJ_NAVIDROME_URL/USER/PASS` | — | fuente Navidrome (opcional) |
-| `ZAI_API_KEY` | — | tu key de LLM (BYOK) |
-| `RDJ_GLM_MODEL` | `glm-5.2` | modelo |
-| `RDJ_VOICE_CMD` | — | comando TTS (`{text}` y `{out}`) |
-| `RDJ_LOCATION` / `RDJ_LAT` / `RDJ_LON` | La Paz | para hora/clima |
-| `RDJ_DJ_EVERY` | `2` | el DJ habla cada N temas |
-| `RDJ_CHUNK` | `8` | temas por tanda (afecta el prefetch) |
-| `RDJ_BITRATE` | `192` | bitrate del stream (kbps) |
-| `RDJ_BED` | — | instrumental para ducking (DJ sobre música) |
+radio-dj lee la config de **tres capas, la más baja gana**:
+
+```
+env vars (RDJ_*)  >  ~/.radio-dj/config.json  >  defaults
+```
+
+**Necesitás solo una.** El wizard de onboarding escribe `config.json` por vos.
+Power users / CI pueden pisar todo con env vars.
+
+### Claves de `config.json` (escrito por el wizard, o editable a mano)
+
+```json
+{
+  "library":       "/home/me/Music/library",
+  "source":        "folder",
+  "glm_api_key":   "your-key",
+  "glm_model":     "glm-5.2",
+  "llm_provider":  "glm",
+  "voice_provider":"edge-tts",
+  "voice":         "es-CO-SalomeNeural",
+  "location":      "La Paz",
+  "lat":           -16.5,
+  "lon":           -68.15,
+  "language":      "es",
+  "dj_talk":       "regular",
+  "chunk":         8,
+  "bitrate":       192,
+  "station_name":  "radio-dj"
+}
+```
+
+### Referencia completa (env var → clave config.json → default)
+
+| Env var | clave `config.json` | Default | Qué |
+|---|---|---|---|
+| `ZAI_API_KEY` / `RDJ_GLM_API_KEY` | `glm_api_key` | — | tu key de LLM (BYOK) |
+| `RDJ_LIBRARY` | `library` | `~/Music/library` | carpeta de música |
+| `RDJ_SOURCE` | `source` | `folder` | `folder` o `navidrome` |
+| `RDJ_NAVIDROME_URL` | `navidrome_url` | `http://localhost:4533` | servidor Navidrome |
+| `RDJ_NAVIDROME_USER` | `navidrome_user` | — | usuario Navidrome |
+| `RDJ_NAVIDROME_PASS` | `navidrome_pass` | — | password Navidrome |
+| `RDJ_GLM_MODEL` | `glm_model` | `glm-5.2` | modelo |
+| `RDJ_LLM_PROVIDER` | `llm_provider` | `glm` | preset: `glm`/`openai`/`openrouter`/… |
+| `RDJ_VOICE_CMD` | `voice_cmd` | — | comando TTS crudo (`{text}` / `{out}`) |
+| `RDJ_VOICE_PROVIDER` | `voice_provider` | — | `edge-tts` / `piper` / `say` |
+| `RDJ_VOICE` | `voice` | — | id de voz para el provider |
+| `RDJ_LOCATION` | `location` | `La Paz` | ciudad (hora + clima) |
+| `RDJ_LAT` / `RDJ_LON` | `lat` / `lon` | coords La Paz | coordenadas precisas para el clima |
+| `RDJ_LANGUAGE` | `language` | `es` | `es` o `en` (prompts DJ + UI) |
+| `RDJ_DJ_TALK` | `dj_talk` | `regular` | `low`/`regular`/`high`/`verbose` — cuánto habla |
+| `RDJ_DJ_EVERY` | `dj_every` | `3` | temas entre talks (piso legacy) |
+| `RDJ_CHUNK` | `chunk` | `8` | temas por tanda (ventana de prefetch) |
+| `RDJ_BITRATE` | `bitrate` | `192` | bitrate del stream (kbps) |
+| `RDJ_STATION_NAME` | `station_name` | `radio-dj` | nombre de la estación |
+| `RDJ_BED` | `bed` | — | instrumental para ducking (DJ sobre música) |
+| `RDJ_ICECAST_HOST` | — | `localhost` | host de icecast (solo env) |
+| `RDJ_ICECAST_PORT` | — | `7702` | puerto de icecast (solo env) |
+| `RDJ_ICECAST_SOURCE_PW` | — | — | password source de icecast (solo env) |
+| `RDJ_STATUS_PORT` | — | `7710` | puerto web UI + API (solo env) |
+
+> **DJ apagado?** El DJ se queda mudo cuando `glm_api_key` no está o no hay voz
+> configurada. La estación igual transmite música sola.
 
 ---
 

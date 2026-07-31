@@ -4,7 +4,8 @@
 //	now                   print what's on air
 //	download <url>        (stub) fetch new music — jarasch vs radio-dj TBD
 //
-// Config is env-only (RDJ_*). Folder mode runs with zero config.
+// Config: env (RDJ_*) > ~/.radio-dj/config.json > defaults. Folder mode runs
+// with zero config. Run `serve` once to launch the onboarding wizard.
 package main
 
 import (
@@ -60,16 +61,11 @@ commands:
   serve              pick tracks, talk between them, stream to Icecast
   now                what's on air right now
   download <url>     (stub) fetch new music
+  install            always-on service (macOS launchd / Linux systemd)
+  uninstall          remove the always-on service
 
-config (env, RDJ_*):
-  RDJ_ICECAST_SOURCE_PW   required to stream (icecast source password)
-  RDJ_LIBRARY             folder of music (default ~/Music/library)
-  RDJ_SOURCE              folder | navidrome (default folder)
-  RDJ_NAVIDROME_URL/USER/PASS   for navidrome source
-  RDJ_GLM_API_KEY         enables the DJ (GLM-5.2 over OpenAI-compatible API)
-  RDJ_VOICE_CMD            TTS command template, e.g. "qohl speak {text} -o {out}"
-  RDJ_DJ_EVERY            voice an intro every N tracks (default 3)
-  RDJ_BITRATE             MP3 bitrate kbps (default 192)
+config (three layers, lowest wins):
+  env RDJ_*  >  ~/.radio-dj/config.json  >  defaults
 
-When RDJ_GLM_API_KEY or RDJ_VOICE_CMD is unset the station runs music-only.`)
+  Run `serve` once — the onboarding wizard writes config.json for you.`)
 }
