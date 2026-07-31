@@ -59,9 +59,10 @@
   .flipper{ transform-style:preserve-3d; will-change:transform; }
   .cass{ display:block; width:100%; height:auto; filter:drop-shadow(6px 6px 0 var(--line)); }
 
-  .tape-shadow{ fill:none; stroke:#000; stroke-width:5; opacity:.28; }
-  .tape-body{ fill:none; stroke:#140d07; stroke-width:2.6; }
-  .tape-sheen{ fill:none; stroke:#f0dcb8; stroke-width:2.6; opacity:0; stroke-dasharray:2 34; }
+  .tape-shadow{ fill:none; stroke:#000; stroke-width:3.4; opacity:.20; }
+  .tape-body{ fill:none; stroke:#2b1f12; stroke-width:2.3; }
+  .tape-gloss{ fill:none; stroke:#6b512f; stroke-width:.9; opacity:.7; }
+  .tape-sheen{ fill:none; stroke:#f0dcb8; stroke-width:2; opacity:0; stroke-dasharray:2 34; }
   .playing .tape-sheen{ opacity:.30; animation:flow .85s linear infinite; }
   @keyframes flow{ to{ stroke-dashoffset:var(--flow); } }
   .pack-edge{ fill:none; stroke:#d8c49a; stroke-width:1.4; opacity:.45; }
@@ -72,8 +73,8 @@
   .label-marker.big{ font-size:15px; }
   .label-marker.small{ font-size:9px; fill:#6a5a44; }
   .label-side{ font-family:'Permanent Marker',cursive; font-size:16px; fill:#c8443a; }
-  .shell-print{ font:800 11px "Helvetica Neue",Arial,sans-serif; letter-spacing:2.6px; fill:#eaf2f2; opacity:.5; }
-  .shell-side{ font:900 15px "Helvetica Neue",Arial,sans-serif; fill:#eaf2f2; opacity:.72; }
+  .shell-print{ font:800 11px "Helvetica Neue",Arial,sans-serif; letter-spacing:2.6px; fill:#5a5346; }
+  .shell-side{ font:900 16px "Helvetica Neue",Arial,sans-serif; fill:#161009; }
 
   /* ── Transporte ── */
   .transport{ display:flex; gap:12px; margin-top:14px; }
@@ -160,74 +161,53 @@
         <!-- Casete a escala real: 100 x 64 mm  ->  400 x 256 u  (1 mm = 4 u) -->
         <svg class="cass" viewBox="0 0 400 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casete en reproducción">
           <defs>
-            <linearGradient id="gShell" x1="0" y1="0" x2=".3" y2="1">
-              <stop offset="0" stop-color="#a3bec1"/><stop offset=".32" stop-color="#87a7ac"/>
-              <stop offset=".72" stop-color="#688a8f"/><stop offset="1" stop-color="#4e7074"/>
-            </linearGradient>
-            <linearGradient id="gWin" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#5f4229"/><stop offset=".6" stop-color="#4a3220"/>
-              <stop offset="1" stop-color="#301d11"/>
-            </linearGradient>
-            <linearGradient id="gGlass" x1="0" y1="0" x2=".8" y2="1">
-              <stop offset="0" stop-color="#fff" stop-opacity=".14"/>
-              <stop offset=".38" stop-color="#fff" stop-opacity=".02"/>
-              <stop offset=".52" stop-color="#fff" stop-opacity=".08"/>
-              <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-            </linearGradient>
-            <radialGradient id="gPack" cx="46%" cy="38%" r="66%">
-              <stop offset="0" stop-color="#3d2c18"/><stop offset=".5" stop-color="#241809"/>
-              <stop offset="1" stop-color="#0d0904"/>
-            </radialGradient>
-            <radialGradient id="gScrew" cx="34%" cy="30%" r="70%">
-              <stop offset="0" stop-color="#e2d5b6"/><stop offset=".6" stop-color="#8f7f5f"/>
-              <stop offset="1" stop-color="#4d4231"/>
-            </radialGradient>
 
-            <!-- rollo de cinta: r 46 (vacío) … 78 (lleno) -->
+            <!-- rollo de cinta: r 48 (vacío) … 90 (lleno) -->
             <g id="packArt">
-              <circle r="78" fill="url(#gPack)"/>
-              <g fill="none" stroke="#6f5230" stroke-width=".7" opacity=".38">
-                <circle r="51"/><circle r="55"/><circle r="59"/><circle r="63"/>
-                <circle r="67"/><circle r="71"/><circle r="74.5"/><circle r="77"/>
+              <circle r="90" fill="#161009"/>
+              <g fill="none" stroke="#3a2c1a" stroke-width=".8" opacity=".55">
+                <circle r="54"/><circle r="60"/><circle r="66"/><circle r="72"/>
+                <circle r="78"/><circle r="83"/><circle r="87"/><circle r="89.4"/>
               </g>
-              <path d="M0,-47 L0,-77.4" stroke="#b3966a" stroke-width="1.4" opacity=".3"/>
-              <path d="M0,47 L0,77.4" stroke="#000" stroke-width="2" opacity=".3"/>
+              <path d="M0,-46 L0,-89.4" stroke="#4a3a24" stroke-width="1.6" opacity=".4"/>
             </g>
 
-            <!-- bobina: brida 44u = 11 mm, como el carrete real -->
+            <!-- bobina estilo referencia: brida + 5 radios + engranaje central + arco rojo -->
             <g id="hubArt">
-              <circle r="44" fill="#d9cdb2"/>
-              <path d="M0,0 L16,-41 A44 44 0 0 0 -16,-41 Z" fill="#c8443a" opacity=".9"/>
-              <g fill="#3b3226" opacity=".55">
-                <rect x="-6" y="-39" width="12" height="13" rx="3"/>
-                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(60)"/>
-                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(120)"/>
-                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(180)"/>
-                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(240)"/>
-                <rect x="-6" y="-39" width="12" height="13" rx="3" transform="rotate(300)"/>
+              <circle r="44" fill="#cbc4b2" stroke="#161009" stroke-width="2"/>
+              <!-- arco rojo (punto de amarre de la cinta) -->
+              <path d="M -32,18.5 A 37 37 0 0 1 -32,-18.5" fill="none" stroke="#d6453a" stroke-width="8" stroke-linecap="round"/>
+              <!-- 5 aberturas entre radios -->
+              <g fill="#2a2118">
+                <path d="M0,0 L27,-9 A28.5 28.5 0 0 1 27,9 Z"/>
+                <path d="M0,0 L27,-9 A28.5 28.5 0 0 1 27,9 Z" transform="rotate(72)"/>
+                <path d="M0,0 L27,-9 A28.5 28.5 0 0 1 27,9 Z" transform="rotate(144)"/>
+                <path d="M0,0 L27,-9 A28.5 28.5 0 0 1 27,9 Z" transform="rotate(216)"/>
+                <path d="M0,0 L27,-9 A28.5 28.5 0 0 1 27,9 Z" transform="rotate(288)"/>
               </g>
-              <circle r="44" fill="none" stroke="#4b4030" stroke-width="1.6"/>
-              <circle r="24" fill="#efe5cd" stroke="#8c7c58" stroke-width="1.2"/>
-              <circle r="18" fill="#0e0a06"/>
-              <g fill="#efe5cd">
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1"/>
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(60)"/>
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(120)"/>
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(180)"/>
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(240)"/>
-                <rect x="-2.6" y="-18.5" width="5.2" height="6" rx="1" transform="rotate(300)"/>
+              <circle r="30" fill="none" stroke="#8f8672" stroke-width="1.4"/>
+              <!-- engranaje central de arrastre -->
+              <circle r="20" fill="#cbc4b2" stroke="#161009" stroke-width="1.6"/>
+              <circle r="15" fill="#161009"/>
+              <g fill="#cbc4b2">
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1"/>
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1" transform="rotate(60)"/>
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1" transform="rotate(120)"/>
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1" transform="rotate(180)"/>
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1" transform="rotate(240)"/>
+                <rect x="-2.8" y="-15.5" width="5.6" height="6" rx="1" transform="rotate(300)"/>
               </g>
             </g>
 
             <!-- guía de cinta de esquina -->
             <g id="guideArt">
-              <circle r="8" fill="#241c13" stroke="#a08e68" stroke-width="1.3"/>
-              <circle r="3" fill="#a08e68"/>
+              <circle r="8" fill="#161009" stroke="#8f8672" stroke-width="1.6"/>
+              <circle r="3" fill="#8f8672"/>
             </g>
 
             <g id="screwArt">
-              <circle r="7" fill="url(#gScrew)" stroke="#26332f" stroke-width="1.2"/>
-              <path d="M-3.4,-3.4 L3.4,3.4 M3.4,-3.4 L-3.4,3.4" stroke="#3a3328" stroke-width="1.6"/>
+              <circle r="8" fill="#d9d2c2" stroke="#161009" stroke-width="2"/>
+              <path d="M-3.8,-3.8 L3.8,3.8 M3.8,-3.8 L-3.8,3.8" stroke="#161009" stroke-width="2"/>
             </g>
 
             <!-- carcasa: rectángulo redondeado con la escotadura del cabezal -->
@@ -237,87 +217,97 @@
             <path id="win" d="M30,30 H370 A10 10 0 0 1 380,40 V226 A10 10 0 0 1 370,236
                               H286 L290,256 H110 L114,236 H30 A10 10 0 0 1 20,226 V40 A10 10 0 0 1 30,30 Z"/>
             <clipPath id="cWin"><use href="#win"/></clipPath>
-            <clipPath id="cL"><circle id="clipL" cx="121" cy="116" r="78"/></clipPath>
-            <clipPath id="cR"><circle id="clipR" cx="279" cy="116" r="46"/></clipPath>
+            <clipPath id="cL"><circle id="clipL" cx="121" cy="118" r="90"/></clipPath>
+            <clipPath id="cR"><circle id="clipR" cx="279" cy="118" r="48"/></clipPath>
           </defs>
 
-          <!-- ── carcasa ── -->
-          <use href="#shell" fill="url(#gShell)" stroke="#22302f" stroke-width="3"/>
-          <use href="#shell" fill="none" stroke="#fff" stroke-width="1" opacity=".16" transform="translate(0,2)"/>
-          <rect x="9" y="9" width="382" height="238" rx="9" fill="none" stroke="#fff" stroke-width="1" opacity=".09"/>
+          <!-- ── carcasa (plana, borde negro grueso) ── -->
+          <use href="#shell" fill="#bdb6a6" stroke="#161009" stroke-width="4"/>
           <!-- rebajes de las lengüetas de protección (canto superior) -->
-          <path d="M12,3 h30 v11 h-30 z M358,3 h30 v11 h-30 z" fill="#000" opacity=".14"/>
+          <path d="M12,3 h30 v11 h-30 z M358,3 h30 v11 h-30 z" fill="#161009" opacity=".18"/>
 
-          <!-- ── ventana ── -->
-          <use href="#win" fill="url(#gWin)"/>
+          <!-- ── ventana (interior plano) ── -->
+          <use href="#win" fill="#8a8579"/>
 
           <g clip-path="url(#cWin)">
-            <use href="#win" fill="none" stroke="#000" stroke-width="10" opacity=".4"/>
-
             <!-- bobina izquierda: SUMINISTRO (se vacía) -->
             <g clip-path="url(#cL)"><g id="reelL">
-              <use href="#packArt" x="121" y="116"/><use href="#hubArt" x="121" y="116"/>
+              <use href="#packArt" x="121" y="118"/><use href="#hubArt" x="121" y="118"/>
             </g></g>
 
             <!-- bobina derecha: RECOGIDA (se llena) -->
             <g clip-path="url(#cR)"><g id="reelR">
-              <use href="#packArt" x="279" y="116"/><use href="#hubArt" x="279" y="116"/>
+              <use href="#packArt" x="279" y="118"/><use href="#hubArt" x="279" y="118"/>
             </g></g>
 
             <!-- poste central de la carcasa -->
-            <circle cx="200" cy="180" r="9" fill="#5d7d80" stroke="#26332f" stroke-width="1.4"/>
-            <circle cx="200" cy="180" r="3.6" fill="#26332f"/>
+            <circle cx="200" cy="182" r="9" fill="#bdb6a6" stroke="#161009" stroke-width="2"/>
+            <circle cx="200" cy="182" r="3.6" fill="#161009"/>
 
             <!-- guías de cinta -->
             <use href="#guideArt" x="35" y="226"/>
             <use href="#guideArt" x="365" y="226"/>
 
-            <!-- cabezal + almohadilla (detrás de la cinta: la cinta los toca) -->
-            <rect x="170" y="236" width="60" height="22" rx="2" fill="#2c2c30" stroke="#71717a" stroke-width="1"/>
-            <rect x="176" y="240" width="48" height="6" rx="1.5" fill="#4c4c54"/>
-            <path d="M200,236 V258" stroke="#71717a" stroke-width="1" opacity=".7"/>
-            <path d="M200,232 V216" stroke="#9a978e" stroke-width="1.6" opacity=".8"/>
-            <rect x="186" y="230" width="28" height="9" rx="2" fill="#5f5c56" stroke="#2b2823" stroke-width="1"/>
+            <!-- cabezal + almohadilla (detrás de la cinta) -->
+            <rect x="170" y="236" width="60" height="22" rx="2" fill="#161009" stroke="#8f8672" stroke-width="1.4"/>
+            <rect x="176" y="240" width="48" height="6" rx="1.5" fill="#4c4636"/>
+            <path d="M200,236 V258" stroke="#8f8672" stroke-width="1.2" opacity=".6"/>
+            <path d="M200,232 V216" stroke="#8f8672" stroke-width="1.6" opacity=".7"/>
+            <rect x="186" y="230" width="28" height="9" rx="2" fill="#7a715c" stroke="#161009" stroke-width="1.2"/>
 
             <!-- ── CINTA ── izquierda (suministro) → cabezal → derecha (recogida) -->
             <path class="tape-shadow" id="tapeShadow"/>
             <path class="tape-body"   id="tapePath"/>
+            <path class="tape-gloss"  id="tapeGloss"/>
             <path class="tape-sheen"  id="tapeSheen"/>
 
-            <!-- ── etiqueta de papel (título/artista a marcador) ── -->
+            <!-- ── etiqueta de papel: carátula + título/artista a marcador ── -->
             <g id="paper" transform="rotate(-.6 200 66)">
               <rect class="paper-label" x="36" y="36" width="328" height="60" rx="3" stroke="#d9cba6" stroke-width="1"/>
               <rect x="36" y="36" width="328" height="60" rx="3" fill="none" stroke="#000" stroke-width="1" opacity=".06"/>
-              <line class="label-line" x1="46" y1="70" x2="354" y2="70"/>
-              <line class="label-line" x1="46" y1="86" x2="354" y2="86"/>
+              <!-- carátula -->
+              <clipPath id="cCover"><rect x="45" y="45" width="42" height="42" rx="2"/></clipPath>
+              <rect id="cover-bg" x="45" y="45" width="42" height="42" rx="2" fill="#161009"/>
+              <g id="cover-ph">
+                <path d="M67,54 v18" stroke="#8f8672" stroke-width="2.4" fill="none"/>
+                <circle cx="63" cy="72" r="4" fill="#8f8672"/>
+                <path d="M67,54 l6,-2 v4 l-6,2 z" fill="#8f8672"/>
+              </g>
+              <image id="cover-img" x="45" y="45" width="42" height="42" clip-path="url(#cCover)"
+                     preserveAspectRatio="xMidYMid slice" style="display:none"/>
+              <rect x="45" y="45" width="42" height="42" rx="2" fill="none" stroke="#161009" stroke-width="2"/>
+              <!-- texto -->
+              <line class="label-line" x1="98" y1="72" x2="354" y2="72"/>
               <text class="label-side" x="352" y="52" text-anchor="end" id="paper-side">A</text>
-              <text class="label-marker small" x="47" y="52" id="paper-kicker">RADIO·DJ 88.7</text>
-              <text class="label-marker big"   x="47" y="67" id="paper-title">—</text>
-              <text class="label-marker small" x="47" y="83" id="paper-artist"></text>
+              <text class="label-marker small" x="99" y="53" id="paper-kicker">RADIO·DJ 88.7</text>
+              <text class="label-marker big"   x="99" y="69" id="paper-title">—</text>
+              <text class="label-marker small" x="99" y="85" id="paper-artist"></text>
             </g>
 
-            <use href="#win" fill="url(#gGlass)"/>
+            
           </g>
 
-          <use href="#win" fill="none" stroke="#22302f" stroke-width="2"/>
+          <use href="#win" fill="none" stroke="#161009" stroke-width="3"/>
 
-          <!-- ── canto inferior: aberturas ── -->
-          <g fill="#1b2523" stroke="#2b3a3c" stroke-width="1">
-            <rect x="88" y="238" width="28" height="18" rx="3"/>
-            <rect x="284" y="238" width="28" height="18" rx="3"/>
-            <circle cx="134" cy="247" r="8.5"/>
-            <circle cx="266" cy="247" r="8.5"/>
+          <!-- ── canto inferior: aberturas (2 agujeros grandes + cuadrados + cabrestantes) ── -->
+          <g fill="#161009" stroke="#161009" stroke-width="1">
+            <circle cx="70"  cy="245" r="10"/>
+            <circle cx="330" cy="245" r="10"/>
+            <rect x="120" y="240" width="14" height="12" rx="2"/>
+            <rect x="266" y="240" width="14" height="12" rx="2"/>
+            <circle cx="158" cy="247" r="7"/>
+            <circle cx="242" cy="247" r="7"/>
           </g>
-          <g fill="none" stroke="#fff" stroke-width="1" opacity=".18">
-            <path d="M126,245 A8.5 8.5 0 0 1 142,245"/><path d="M258,245 A8.5 8.5 0 0 1 274,245"/>
-            <path d="M88,239 h28"/><path d="M284,239 h28"/>
+          <g fill="#8f8672">
+            <circle cx="70"  cy="245" r="4.5"/>
+            <circle cx="330" cy="245" r="4.5"/>
           </g>
 
           <!-- ── tornillos + serigrafía ── -->
-          <use href="#screwArt" x="18" y="16"/><use href="#screwArt" x="382" y="16"/>
-          <use href="#screwArt" x="14" y="243"/><use href="#screwArt" x="386" y="243"/>
-          <text class="shell-side" id="side-print" x="42" y="24">A</text>
-          <text class="shell-print" x="358" y="23" text-anchor="end">TYPE I · NORMAL</text>
+          <use href="#screwArt" x="20" y="18"/><use href="#screwArt" x="380" y="18"/>
+          <use href="#screwArt" x="20" y="238"/><use href="#screwArt" x="380" y="238"/>
+          <text class="shell-side" id="side-print" x="44" y="26">A</text>
+          <text class="shell-print" x="356" y="25" text-anchor="end">TYPE I · NORMAL</text>
         </svg>
       </div>
 
@@ -503,8 +493,17 @@
     fetch('/cover').then(r=> r.ok ? r.blob() : Promise.reject()).then(b=>{
       if(coverURL) URL.revokeObjectURL(coverURL);
       coverURL = URL.createObjectURL(b);
+      const img = $('cover-img');
+      img.setAttributeNS('http://www.w3.org/1999/xlink','href', coverURL);
+      img.setAttribute('href', coverURL);
+      img.style.display = '';
+      $('cover-ph').style.display = 'none';
       updateMediaMeta();
-    }).catch(()=>{ coverURL = null; });
+    }).catch(()=>{
+      coverURL = null;
+      $('cover-img').style.display = 'none';
+      $('cover-ph').style.display = '';
+    });
   }
 
   function flipCassette(){
@@ -534,11 +533,11 @@
      Por eso la bobina izquierda entrega cinta y la derecha la recoge, y las
      dos giran en el MISMO sentido, aquí antihorario.
      Si querés el sentido contrario, poné REVERSA = true.                     */
-  const REVERSA = true;   // supply reel on RIGHT, take-up on LEFT, clockwise spin
+  const REVERSA = false;
 
-  const HUB_L = {x:121, y:116}, HUB_R = {x:279, y:116};
+  const HUB_L = {x:121, y:118}, HUB_R = {x:279, y:118};
   const GUI_L = {x:35,  y:226}, GUI_R = {x:365, y:226};
-  const R_GUI = 8, R_MAX = 78, R_MIN = 46;
+  const R_GUI = 8, R_MAX = 90, R_MIN = 48;
   const TAPE_Y = GUI_L.y + R_GUI;      // 234 — la cinta corre pegada al borde inferior
   const DSQ = R_MAX*R_MAX - R_MIN*R_MIN;
   const SPEED = 105;                   // u/s ≈ 4,76 cm/s reales
@@ -564,12 +563,20 @@
   }
 
   // rollo → tramo recto → arco por FUERA de la guía → tramo del cabezal → guía → rollo
+  // El extremo en el rollo se mete unos px hacia el centro (INSET) para que la cinta
+  // se funda con el bobinado y no parezca cortada en punta.
+  const INSET = 1.5;
+  function inset(P, c){
+    const dx = c.x - P.x, dy = c.y - P.y, d = Math.hypot(dx,dy) || 1;
+    return { x: P.x + dx/d*INSET, y: P.y + dy/d*INSET };
+  }
   function tapeD(a, b){
-    return `M ${n1(a.p.x)},${n1(a.p.y)} L ${n1(a.q.x)},${n1(a.q.y)}`
+    const pa = inset(a.p, HUB_L), pb = inset(b.p, HUB_R);
+    return `M ${n1(pa.x)},${n1(pa.y)} L ${n1(a.q.x)},${n1(a.q.y)}`
          + ` A ${R_GUI} ${R_GUI} 0 0 0 ${GUI_L.x},${TAPE_Y}`
          + ` L ${GUI_R.x},${TAPE_Y}`
          + ` A ${R_GUI} ${R_GUI} 0 0 0 ${n1(b.q.x)},${n1(b.q.y)}`
-         + ` L ${n1(b.p.x)},${n1(b.p.y)}`;
+         + ` L ${n1(pb.x)},${n1(pb.y)}`;
   }
 
   let lastP = -1;
@@ -585,7 +592,7 @@
     $('clipR').setAttribute('r', rR.toFixed(2));
     const d = tapeD(tangent(HUB_L, rL, GUI_L, R_GUI, -1),
                     tangent(HUB_R, rR, GUI_R, R_GUI, +1));
-    ['tapeShadow','tapePath','tapeSheen'].forEach(id => $(id).setAttribute('d', d));
+    ['tapeShadow','tapePath','tapeGloss','tapeSheen'].forEach(id => $(id).setAttribute('d', d));
   }
 
   function currentP(){
