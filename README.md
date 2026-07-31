@@ -9,7 +9,7 @@ continuous Icecast MP3 stream the DJ talks over — live, mid-song.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![macOS](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey)]()
-[![LinkedIn](https://img.shields.io/badge/Follow-AlmanzaTech-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/almanzatech/)
+[![LinkedIn](https://img.shields.io/badge/Follow-johncrash64-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/johncrash64/)
 
 English · [Español](README.es.md)
 
@@ -254,7 +254,7 @@ One icecast connection that never drops = zero listener cutouts.
 
 <div align="center">
 
-Made by **[AlmanzaTech](https://www.linkedin.com/in/almanzatech/)** ·
+Made by **[johncrash64](https://www.linkedin.com/in/johncrash64/)** ·
 [Report a bug](https://github.com/johncrash64/radio-dj/issues) ·
 [Request a feature](https://github.com/johncrash64/radio-dj/issues)
 

@@ -10,7 +10,7 @@ de la canción.
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![macOS](https://img.shields.io/badge/Plataforma-macOS%20%7C%20Linux-lightgrey)]()
-[![LinkedIn](https://img.shields.io/badge/Seguir-AlmanzaTech-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/almanzatech/)
+[![LinkedIn](https://img.shields.io/badge/Seguir-johncrash64-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/johncrash64/)
 
 [Español](README.es.md) · English
 
@@ -258,7 +258,7 @@ Una sola conexión a icecast que no se cae = cero cortes para los oyentes.
 
 <div align="center">
 
-Hecho por **[AlmanzaTech](https://www.linkedin.com/in/almanzatech/)** ·
+Hecho por **[johncrash64](https://www.linkedin.com/in/johncrash64/)** ·
 [Reportar un bug](https://github.com/johncrash64/radio-dj/issues) ·
 [Pedir una feature](https://github.com/johncrash64/radio-dj/issues)
 
