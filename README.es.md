@@ -26,7 +26,7 @@ presenta el artista, lee la hora y el **clima real**, tira **datos curiosos**
 con búsqueda web, y agradece los pedidos en vivo — y transmite un stream
 Icecast MP3 estándar que cualquier reproductor puede sintonizar.
 
-Sin Docker. Sin pesado. **~50 MB de RAM** — corre en una Raspberry Pi.
+Sin Docker. Sin pesado. **~20 MB de RAM** (el binario Go; ~50 MB con Icecast + ffmpeg) — corre en una Raspberry Pi.
 
 <br clear="right" />
 
@@ -95,6 +95,9 @@ cd radio-dj && go build -o radio-dj .
 
 Corré `radio-dj serve` — al primer arranque abre un **wizard de onboarding**
 que escribe todo a `~/.radio-dj/config.json`. O poné variables de entorno:
+
+> **Reconfigurá cuando quieras:** editá `~/.radio-dj/config.json` y reiniciá,
+> o borrá el archivo para revivir el wizard.
 
 ```bash
 export ZAI_API_KEY=tu_key            # GLM-5.2 (cualquier OpenAI-compatible sirve)
@@ -241,7 +244,7 @@ Power users / CI pueden pisar todo con env vars.
 ## 🛠️ Cómo funciona (arquitectura)
 
 ```
-radio-dj (Go, ~50 MB RAM)
+radio-dj (Go, ~20 MB RAM)
   ├─ supervisor   levanta y vigila icecast (child process, auto-restart)
   ├─ producer     arma la próxima tanda (Director LLM + TTS) en prefetch
   ├─ master ffmpeg (persistente)   PCM → MP3 → icecast, NUNCA se reconecta
