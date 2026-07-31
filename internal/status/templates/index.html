@@ -124,12 +124,21 @@
   /* ── Panel con pestañas (debajo de la botonera) ── */
   .tabs{ padding:0; overflow:hidden; }
   .tab-bar{ display:flex; }
-  .tab{ flex:1; padding:11px 6px; border:0; background:#cfc7b5; cursor:pointer;
-    font-family:inherit; font-size:9px; font-weight:900; letter-spacing:1.2px; text-transform:uppercase;
+  .tab{ flex:1; padding:13px 6px 15px; border:0; background:#cfc7b5; cursor:pointer;
+    font-family:inherit; font-size:10px; font-weight:900; letter-spacing:.8px; text-transform:uppercase;
     color:#6b5d4a; border-right:3px solid var(--line); border-bottom:3px solid var(--line);
-    transition:background .1s; -webkit-tap-highlight-color:transparent; }
+    position:relative; white-space:nowrap;
+    transition:background .12s; -webkit-tap-highlight-color:transparent; }
   .tab:last-child{ border-right:none; }
-  .tab.active{ background:var(--paper); color:var(--ink); border-bottom:none; }
+  /* tira de color inferior — cada pestaña con identidad propia */
+  .tab::after{ content:""; position:absolute; left:0; right:0; bottom:0; height:6px; }
+  .tab[data-tab="history"]::after{ background:var(--hist); }
+  .tab[data-tab="djlog"]::after{ background:var(--sage); }
+  .tab[data-tab="reqs"]::after{ background:var(--rose); }
+  .tab.active::after{ display:none; }
+  .tab.active[data-tab="history"]{ background:var(--hist); color:#fff5e6; border-bottom:none; }
+  .tab.active[data-tab="djlog"]{ background:var(--sage); color:var(--ink); border-bottom:none; }
+  .tab.active[data-tab="reqs"]{ background:var(--rose); color:var(--ink); border-bottom:none; }
   .tab:not(.active):hover{ background:#dfd9c8; }
   .tab .badge{ display:inline-block; min-width:15px; padding:1px 4px; margin-left:4px; border-radius:8px;
     background:var(--onair); color:#fff5e6; font-size:7px; line-height:1.5; vertical-align:middle; font-weight:900; }
@@ -156,11 +165,12 @@
   .ask button:active{ transform:translate(2px,2px); }
   .ask .h{ font-size:11px; color:var(--soft); margin-top:8px; font-weight:700; }
 
-  .foot{ display:flex; justify-content:space-between; gap:8px; padding:8px 14px; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; color:var(--soft); background:var(--gold); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); }
+  .onair .lst{ margin-left:7px; padding:2px 7px; background:var(--ink); color:var(--gold);
+    font-family:var(--font-mono); font-size:11px; font-weight:800; border:2px solid var(--line); }
 
   @media (max-width:480px){
     .stack{ gap:11px; }
-    .blk,.foot{ box-shadow:4px 4px 0 var(--line); }
+    .blk{ box-shadow:4px 4px 0 var(--line); }
     .cass{ filter:drop-shadow(4px 4px 0 var(--line)); }
     .bar > *{ padding:10px 11px; letter-spacing:1.5px; }
     .brand{ font-size:13px; }
@@ -179,7 +189,7 @@
     <div class="blk bar">
       <span class="brand">RADIO·DJ</span>
       <span class="freq">88.7</span>
-      <span class="onair"><span class="led"></span> ON AIR</span>
+      <span class="onair"><span class="led"></span> ON AIR<span class="lst" id="lst" hidden><b id="listeners-count">0</b></span></span>
     </div>
 
     <div class="blk card">
@@ -397,12 +407,6 @@
       </form>
       <div class="h">Dejá tu mensaje al aire · entra en la próxima tanda</div>
     </div>
-
-    <div class="foot">
-      <span>RDJ-0001</span>
-      <span class="listeners" id="listeners" style="display:none">🔊 <b id="listeners-count">0</b> OYENTES</span>
-      <span id="state">EN PAUSA</span>
-    </div>
   </div>
 
 <audio id="audio" preload="none"></audio>
@@ -420,16 +424,16 @@
     if(s === 'playing'){
       $('play-ico').textContent = '▶'; $('play-txt').textContent = 'Sonando';
       kPlay.classList.add('down'); kPlay.classList.remove('connecting');
-      deck.classList.add('playing'); $('state').textContent = 'AL AIRE';
+      deck.classList.add('playing');
     } else if(s === 'connecting'){
       $('play-ico').innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
       $('play-txt').textContent = 'Conecta…';
       kPlay.classList.add('down','connecting');
-      deck.classList.remove('playing'); $('state').textContent = 'CONECTANDO…';
+      deck.classList.remove('playing');
     } else {
       $('play-ico').textContent = '▶'; $('play-txt').textContent = 'Play';
       kPlay.classList.remove('down','connecting');
-      deck.classList.remove('playing'); $('state').textContent = 'EN PAUSA';
+      deck.classList.remove('playing');
     }
   }
 
@@ -475,7 +479,6 @@
   function reconnectStream(){
     if(reconnectTimer) return;
     setAudioState('idle');
-    $('state').textContent = 'RECONECTANDO…';
     reconnectTimer = setTimeout(()=>{
       reconnectTimer = null;
       audio.src = 'stream.mp3?t=' + Date.now();
@@ -550,7 +553,7 @@
     duration = (typeof c.duration === 'number') ? c.duration : null;
 
     const l = (typeof j.listeners === 'number') ? j.listeners : 0;
-    $('listeners').style.display = l>0 ? '' : 'none';
+    $('lst').hidden = l<1;
     $('listeners-count').textContent = l;
 
     const h = j.history||[];
