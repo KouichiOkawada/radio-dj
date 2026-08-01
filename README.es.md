@@ -20,13 +20,13 @@ de la canción.
 
 <img src="docs/screenshots/cassette-running.gif" alt="radio-dj cassette girando" align="right" width="320" />
 
-`radio-dj` es un único binario de Go (~10 MB) que arma una estación de radio
+`radio-dj` es un único binario de Go (~9 MB) que arma una estación de radio
 completa. Elige temas de tu biblioteca, un DJ con IA habla entre canciones —
 presenta el artista, lee la hora y el **clima real**, tira **datos curiosos**
 con búsqueda web, y agradece los pedidos en vivo — y transmite un stream
 Icecast MP3 estándar que cualquier reproductor puede sintonizar.
 
-Sin Docker. Sin pesado. Un **binario de 8.7 MB**, **~20–30 MB de RAM** (~50–60 MB con Icecast + ffmpeg) — corre en una Raspberry Pi.
+Sin Docker. Sin pesado. Un **binario de 8.7 MB**, **~20–30 MB de RAM** (~50–60 MB con Icecast + ffmpeg) — medido en macOS, liviano para una Raspberry Pi.
 
 <br clear="right" />
 

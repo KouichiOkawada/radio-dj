@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"radio-dj/internal/i18n"
 )
@@ -69,12 +70,37 @@ func New(baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
 }
 
 // systemPrompt fills the standing persona with station + location.
+// todLabel returns the localized time-of-day word for the hour, looked up in
+// the localized prompt set so the model anchors tone to the real local clock
+// (GLM defaults to a CN timezone — the explicit {time}/{time_of_day} override
+// stops it from calling the afternoon "night").
+func (d *DJ) todLabel(t time.Time) string {
+	var key string
+	switch h := t.Hour(); {
+	case h < 6:
+		key = "dawn"
+	case h < 12:
+		key = "morning"
+	case h < 19:
+		key = "afternoon"
+	default:
+		key = "night"
+	}
+	return d.p.Get("tod_" + key)
+}
+
 func (d *DJ) systemPrompt() string {
 	loc := d.location
 	if loc == "" {
 		loc = "Bolivia"
 	}
-	return d.p.Sub("system", map[string]string{"station": d.station, "location": loc})
+	now := time.Now()
+	return d.p.Sub("system", map[string]string{
+		"station":     d.station,
+		"location":    loc,
+		"time":        now.Format("15:04"),
+		"time_of_day": d.todLabel(now),
+	})
 }
 
 // credit builds the " by {artist} (from {album})" tail shared by banter +
