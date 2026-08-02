@@ -429,7 +429,9 @@
   // PWA: register service worker for installability + offline app shell.
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
   const audio = document.getElementById('audio');
-  audio.src = 'stream.mp3';
+  // src is (re)assigned on every play so stop() can release it and free the
+  // progressive-download buffer WebKit otherwise retains after a long session.
+  function playStream(){ audio.src = 'stream.mp3'; return audio.play(); }
   const $ = id => document.getElementById(id);
   const deck = $('deck');
 
@@ -466,11 +468,14 @@
     if(audioState === 'idle'){
       setRec(false);
       setAudioState('connecting');
-      audio.play().catch(()=> setAudioState('idle'));
+      playStream().catch(()=> setAudioState('idle'));
     }
   };
   kStop.onclick = ()=>{
-    audio.pause(); audio.currentTime = 0; setAudioState('idle'); setRec(false);
+    // Release the accumulated progressive-download buffer (currentTime is a no-op
+    // on a live stream). Next play reassigns src via playStream().
+    audio.pause(); audio.removeAttribute('src'); audio.load();
+    setAudioState('idle'); setRec(false);
   };
   kRec.onclick = ()=> setRec(!kRec.classList.contains('down'));
   // teclas sin función (de momento): sólo el hundido momentáneo del :active
@@ -488,7 +493,7 @@
     });
   }
   if('mediaSession' in navigator){
-    navigator.mediaSession.setActionHandler('play',  ()=> audio.play());
+    navigator.mediaSession.setActionHandler('play',  ()=> playStream());
     navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
   }
 
