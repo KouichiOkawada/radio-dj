@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,8 +15,67 @@ import (
 // postCopy is a no-op on Linux.
 func postCopy(_ string) {}
 
-// installService writes a systemd user unit and enables it.
+// initSystem reports the service manager present on this host: "openrc",
+// "systemd", or "" (unsupported). Detection is by marker binary + the
+// openrc-run interpreter, not by /proc/1 — containers can run one init under
+// another, and a bare "systemctl" on an OpenRC box (via a compat shim) would
+// otherwise misroute.
+func initSystem() string {
+	if _, err := exec.LookPath("rc-service"); err == nil {
+		if _, err := os.Stat("/sbin/openrc-run"); err == nil {
+			return "openrc"
+		}
+	}
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		return "systemd"
+	}
+	return ""
+}
+
+// serviceUser is the account radio-dj will run as. Under sudo/doas it is the
+// invoking user (SUDO_USER/DOAS_USER), since OpenRC system services need root
+// to install but must not run radio-dj as root.
+func serviceUser() (string, error) {
+	for _, k := range []string{"DOAS_USER", "SUDO_USER"} {
+		if u := os.Getenv(k); u != "" {
+			return u, nil
+		}
+	}
+	if u := os.Getenv("USER"); u != "" && u != "root" {
+		return u, nil
+	}
+	if usr, err := user.Current(); err == nil {
+		return usr.Username, nil
+	}
+	return "", fmt.Errorf("could not determine service user")
+}
+
 func installService(bin string) error {
+	switch initSystem() {
+	case "openrc":
+		return installOpenRC(bin)
+	case "systemd":
+		return installSystemd(bin)
+	default:
+		return fmt.Errorf("no supported init system found (need OpenRC's rc-service or systemd's systemctl)")
+	}
+}
+
+func uninstallService() error {
+	switch initSystem() {
+	case "openrc":
+		return uninstallOpenRC()
+	case "systemd":
+		return uninstallSystemd()
+	default:
+		return fmt.Errorf("no supported init system found")
+	}
+}
+
+// --- systemd ---
+
+// installSystemd writes a systemd user unit and enables it.
+func installSystemd(bin string) error {
 	unit, err := unitPath()
 	if err != nil {
 		return err
@@ -39,8 +99,8 @@ func installService(bin string) error {
 	return nil
 }
 
-// uninstallService stops, disables, and removes the systemd user unit.
-func uninstallService() error {
+// uninstallSystemd stops, disables, and removes the systemd user unit.
+func uninstallSystemd() error {
 	unit, err := unitPath()
 	if err != nil {
 		return err
@@ -95,4 +155,112 @@ StandardError=append:%s/radio-dj.err.log
 [Install]
 WantedBy=default.target
 `, bin, strings.Join(envLines, "\n"), sd, sd)
+}
+
+// --- OpenRC (Alpine, Artix, Void, Gentoo) ---
+//
+// Unlike the systemd/launchd paths (user services, no root), OpenRC has no
+// native user-service concept, so this installs a SYSTEM service in
+// /etc/init.d that drops privileges to the invoking user via command_user.
+// Writing /etc/init.d + /etc/conf.d + rc-update therefore requires root; when
+// the installer is not root it prints the exact escalation command to re-run
+// with (sudo or doas).
+
+const (
+	openrcUnitPath = "/etc/init.d/radio-dj"
+	openrcConfPath = "/etc/conf.d/radio-dj"
+)
+
+func installOpenRC(bin string) error {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("OpenRC services are system-level and require root.\n" +
+			"Re-run with escalation:\n" +
+			"  sudo radio-dj install\n" +
+			"  doas radio-dj install")
+	}
+	su, err := serviceUser()
+	if err != nil {
+		return err
+	}
+	usr, err := user.Lookup(su)
+	if err != nil {
+		return fmt.Errorf("lookup user %s: %w", su, err)
+	}
+	home := usr.HomeDir
+
+	if err := os.WriteFile(openrcUnitPath, []byte(openrcUnitContent(bin, su, home)), 0o755); err != nil {
+		return fmt.Errorf("write %s: %w", openrcUnitPath, err)
+	}
+	if err := os.WriteFile(openrcConfPath, []byte(openrcConfContent(home)), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", openrcConfPath, err)
+	}
+	if out, err := exec.Command("rc-update", "add", "radio-dj", "default").CombinedOutput(); err != nil {
+		return fmt.Errorf("rc-update add: %w\n%s", err, out)
+	}
+	// start now, best-effort — ignore failure if the ports are already in use
+	// (e.g. a foreground `radio-dj serve` still running). Boot starts still work.
+	if out, err := exec.Command("rc-service", "radio-dj", "restart").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "  (rc-service restart: %v\n  %s)\n", err, strings.TrimSpace(string(out)))
+	}
+	fmt.Printf("✓ OpenRC service installed (%s)\n", openrcUnitPath)
+	return nil
+}
+
+func uninstallOpenRC() error {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("OpenRC uninstall requires root.\nRe-run with escalation:\n  sudo radio-dj uninstall\n  doas radio-dj uninstall")
+	}
+	_, _ = exec.Command("rc-service", "radio-dj", "stop").CombinedOutput()
+	_, _ = exec.Command("rc-update", "del", "radio-dj", "default").CombinedOutput()
+	_ = os.Remove(openrcUnitPath)
+	_ = os.Remove(openrcConfPath)
+	fmt.Printf("✓ radio-dj uninstalled (OpenRC %s + conf.d removed)\n", label)
+	return nil
+}
+
+// openrcUnitContent renders the OpenRC init.d script. command_background=true
+// makes OpenRC background the (foreground) `radio-dj serve` and track it via
+// pidfile; command_user drops privileges to the invoking user. Env (HOME/PATH/
+// RDJ_*/ZAI) is sourced from /etc/conf.d/radio-dj, generated below.
+func openrcUnitContent(bin, svcUser, home string) string {
+	return fmt.Sprintf(`#!/sbin/openrc-run
+
+name="radio-dj"
+description="radio-dj — 24/7 AI DJ radio"
+command="%s"
+command_args="serve"
+command_user="%s"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="%s/.radio-dj/radio-dj.out.log"
+error_log="%s/.radio-dj/radio-dj.err.log"
+
+depend() {
+	need net
+	after firewall
+}
+`, bin, svcUser, home, home)
+}
+
+// openrcConfContent renders /etc/conf.d/radio-dj. HOME lets radio-dj find
+// ~/.radio-dj/config.json; PATH lets it find the venv edge-tts + ffmpeg +
+// icecast. Any RDJ_*/ZAI env present at install time rides along as an
+// optional override layer (config.json remains the primary source).
+func openrcConfContent(home string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# radio-dj OpenRC service config (generated by `radio-dj install`)\n")
+	fmt.Fprintf(&b, "HOME=\"%s\"\n", home)
+	fmt.Fprintf(&b, "PATH=\"%s/.local/bin:%s/.radio-dj/venv/bin:/usr/local/bin:/usr/bin:/bin\"\n", home, home)
+	vars := envVars()
+	keys := make([]string, 0, len(vars))
+	for k := range vars {
+		if strings.HasPrefix(k, "RDJ_") || k == "ZAI_API_KEY" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s=\"%s\"\n", k, vars[k])
+	}
+	return b.String()
 }

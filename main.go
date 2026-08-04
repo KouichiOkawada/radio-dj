@@ -61,7 +61,7 @@ commands:
   serve              pick tracks, talk between them, stream to Icecast
   now                what's on air right now
   download <url>     (stub) fetch new music
-  install            always-on service (macOS launchd / Linux systemd)
+  install            always-on service (macOS launchd · Linux systemd/OpenRC)
   uninstall          remove the always-on service
 
 config (three layers, lowest wins):

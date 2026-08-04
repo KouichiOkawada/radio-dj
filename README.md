@@ -44,7 +44,7 @@ No Docker. No bloat. One **8.7 MB binary**, **~20–30 MB of RAM** (~50–60 MB 
   recompiling.
 - **BYOK LLM** — GLM, OpenAI, OpenRouter, Ollama, Groq, or any
   OpenAI-compatible provider.
-- **Always-on** — installs as a macOS launchd or Linux systemd service, survives reboots.
+- **Always-on** — installs as a macOS launchd, Linux systemd, or OpenRC service, survives reboots.
 - **Installable PWA** — add the radio UI to your dock/home screen (Chrome install button or Safari → Add to Dock). App shell works offline.
 
 ---
@@ -106,7 +106,7 @@ export RDJ_VOICE_CMD="edge-tts --voice es-CO-SalomeNeural --text {text} --write-
 ### Always-on service (survives reboots)
 
 ```bash
-radio-dj install      # macOS → launchd agent · Linux → systemd user unit
+radio-dj install      # macOS → launchd agent · Linux → systemd user unit or OpenRC (needs sudo/doas)
 radio-dj uninstall    # stop and remove the service
 ```
 

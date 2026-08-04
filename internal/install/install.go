@@ -1,14 +1,16 @@
 // Package install manages the always-on service that runs radio-dj in the
 // background, surviving reboots and terminal closes.
 //
-//	macOS  → launchd user agent   (~/Library/LaunchAgents/com.radio-dj.plist)
-//	Linux  → systemd user unit    (~/.config/systemd/user/radio-dj.service)
+//	macOS  → launchd user agent     (~/Library/LaunchAgents/com.radio-dj.plist)
+//	Linux  → systemd user unit      (~/.config/systemd/user/radio-dj.service)
+//	      → or OpenRC system service (/etc/init.d/radio-dj, requires root)
 package install
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -18,7 +20,7 @@ const label = "com.radio-dj"
 // StableBinPath is where the binary is copied so the service survives a
 // repo move/delete.
 func StableBinPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".local", "bin", "radio-dj")
+	return filepath.Join(effectiveHome(), ".local", "bin", "radio-dj")
 }
 
 // Install copies the running binary to a stable path, then registers the
@@ -95,5 +97,21 @@ func envVars() map[string]string {
 
 // stateDir is the standalone state directory (~/.radio-dj).
 func stateDir() string {
-	return os.Getenv("HOME") + "/.radio-dj"
+	return filepath.Join(effectiveHome(), ".radio-dj")
+}
+
+// effectiveHome returns the home directory radio-dj should install INTO.
+// When the installer runs under sudo/doas (OpenRC system services need root),
+// the invoking user — not root — is the one who runs radio-dj, so the binary,
+// config, and logs must live in THEIR home. Unescalated runs (systemd --user,
+// launchd user agent) keep using $HOME.
+func effectiveHome() string {
+	for _, k := range []string{"DOAS_USER", "SUDO_USER"} {
+		if u := os.Getenv(k); u != "" {
+			if usr, err := user.Lookup(u); err == nil {
+				return usr.HomeDir
+			}
+		}
+	}
+	return os.Getenv("HOME")
 }
