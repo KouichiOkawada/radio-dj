@@ -25,7 +25,8 @@ func TestOpenRCUnitContent(t *testing.T) {
 		`command="/home/rider/.local/bin/radio-dj"`,
 		`command_args="serve"`,
 		`command_user="rider"`,
-		"command_background=true",
+		`command_background="yes"`,
+		`directory="/home/rider"`,
 		`pidfile="/run/${RC_SVCNAME}.pid"`,
 		`output_log="/home/rider/.radio-dj/radio-dj.out.log"`,
 		"depend() {",
@@ -39,11 +40,13 @@ func TestOpenRCUnitContent(t *testing.T) {
 
 func TestOpenRCConfContent(t *testing.T) {
 	got := openrcConfContent("/home/rider")
-	if !strings.Contains(got, `HOME="/home/rider"`) {
-		t.Errorf("conf missing HOME; got:\n%s", got)
+	// HOME must be exported (start-stop-daemon --chuid sets uid, not env).
+	if !strings.Contains(got, `export HOME="/home/rider"`) {
+		t.Errorf("conf missing exported HOME; got:\n%s", got)
 	}
-	wantPath := `PATH="/home/rider/.local/bin:/home/rider/.radio-dj/venv/bin:/usr/local/bin:/usr/bin:/bin"`
+	// PATH must be PREPENDED (keep $PATH so /sbin/start-stop-daemon survives).
+	wantPath := `export PATH="/home/rider/.local/bin:/home/rider/.radio-dj/venv/bin:$PATH"`
 	if !strings.Contains(got, wantPath) {
-		t.Errorf("conf missing venv PATH;\nwant: %s\n got:\n%s", wantPath, got)
+		t.Errorf("conf missing prepended venv PATH;\nwant: %s\n got:\n%s", wantPath, got)
 	}
 }
