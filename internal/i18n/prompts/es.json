@@ -31,5 +31,17 @@
   "ui_recording": "Grabando pedido",
   "ui_send": "Enviar",
   "ui_no_requests": "Sin pedidos aún",
-  "ui_nothing_played": "Todavía no sonó nada…"
+  "ui_nothing_played": "Todavía no sonó nada…",
+  "ui_tab_requests": "Pedidos",
+  "ui_ph_name": "Tu nombre (opcional)",
+  "ui_ph_request": "¿Qué querés escuchar y para quién?",
+  "ui_playing": "Sonando",
+  "ui_connecting": "Conecta…",
+  "ui_recorded_sent": "✔ Grabado y enviado al locutor",
+  "ui_no_djlog": "Todavía no habló el locutor…",
+  "ui_aria_cassette": "Casete en reproducción",
+  "ui_aria_ffwd": "Avance rápido",
+  "ui_aria_rew": "Rebobinar",
+  "ui_aria_rec": "Grabar pedido",
+  "ui_hint": "Dejá tu mensaje al aire · entra en la próxima tanda"
 }

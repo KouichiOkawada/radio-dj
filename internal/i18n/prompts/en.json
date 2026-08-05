@@ -31,5 +31,17 @@
   "ui_recording": "Recording request",
   "ui_send": "Send",
   "ui_no_requests": "No requests yet",
-  "ui_nothing_played": "Nothing played yet…"
+  "ui_nothing_played": "Nothing played yet…",
+  "ui_tab_requests": "Requests",
+  "ui_ph_name": "Your name (optional)",
+  "ui_ph_request": "What would you like to hear, and for whom?",
+  "ui_playing": "Playing",
+  "ui_connecting": "Connecting…",
+  "ui_recorded_sent": "✔ Recorded and sent to the DJ",
+  "ui_no_djlog": "The DJ hasn't spoken yet…",
+  "ui_aria_cassette": "Cassette playing",
+  "ui_aria_ffwd": "Fast forward",
+  "ui_aria_rew": "Rewind",
+  "ui_aria_rec": "Record request",
+  "ui_hint": "Leave a message for the air · it plays in the next break"
 }

@@ -45,7 +45,11 @@ var indexTmpl = template.Must(template.New("index").Parse(indexHTML))
 func (s *Server) serveIndex(w http.ResponseWriter) {
 	p, _ := i18n.Load(s.lang)
 	data := struct {
-		Next, TabHistory, TabDJ, Recording, Send, NoRequests, NothingPlayed string
+		Next, TabHistory, TabDJ, TabRequests, Recording, Send string
+		NoRequests, NothingPlayed, NoDJLog                    string
+		PhName, PhRequest, Hint                               string
+		Playing, Connecting, RecordedSent                     string
+		AriaCassette, AriaFfwd, AriaRew, AriaRec              string
 	}{
 		Next:          p.Get("ui_next"),
 		TabHistory:    p.Get("ui_tab_history"),
@@ -54,6 +58,17 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		Send:          p.Get("ui_send"),
 		NoRequests:    p.Get("ui_no_requests"),
 		NothingPlayed: p.Get("ui_nothing_played"),
+		NoDJLog:       p.Get("ui_no_djlog"),
+		PhName:        p.Get("ui_ph_name"),
+		PhRequest:     p.Get("ui_ph_request"),
+		Hint:          p.Get("ui_hint"),
+		Playing:       p.Get("ui_playing"),
+		Connecting:    p.Get("ui_connecting"),
+		RecordedSent:  p.Get("ui_recorded_sent"),
+		AriaCassette:  p.Get("ui_aria_cassette"),
+		AriaFfwd:      p.Get("ui_aria_ffwd"),
+		AriaRew:       p.Get("ui_aria_rew"),
+		AriaRec:       p.Get("ui_aria_rec"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = indexTmpl.Execute(w, data)
