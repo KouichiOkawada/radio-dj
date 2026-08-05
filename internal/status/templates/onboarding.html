@@ -256,7 +256,7 @@ document.getElementById("t").addEventListener("click", async ()=>{
   const r = document.getElementById("tres"); r.className="res"; r.textContent="testing…";
   try{
     const res = await fetch("/onboarding/test",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({base_url:glm_base_url.value, api_key:glm_api_key.value, model:glm_model.value})});
+      body:JSON.stringify({base_url:glm_base_url.value, api_key:glm_api_key.value, model:glm_model.value, provider:llm_provider.value})});
     const j = await res.json();
     if(j.ok){ r.className="res ok"; r.textContent="OK — connection works."; }
     else { r.className="res err"; r.textContent="Failed: "+(j.error||"unknown"); }

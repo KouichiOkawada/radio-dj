@@ -75,7 +75,7 @@ func Serve(cfg config.Config) error {
 		if perr != nil {
 			log.Printf("[radio-dj] WARN i18n: %v", perr)
 		}
-		djx = dj.New(cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName, prompts)
+		djx = dj.New(cfg.LLMProvider, cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName, prompts)
 		vox = voice.New(cfg.VoiceProvider, cfg.Voice, cfg.VoiceCmd)
 		pool = skills.NewPool(cfg.StationName, cfg.LocationName, cfg.Latitude, cfg.Longitude, skills.LoadDir(cfg.StateDir, cfg.Language))
 		log.Printf("[radio-dj] DJ on: %s @ %s · every %d · bed=%s",

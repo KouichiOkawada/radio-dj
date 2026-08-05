@@ -369,21 +369,26 @@ func (s *Server) ListenAndServeHTTP(port int) {
 	})
 	mux.HandleFunc("/onboarding/test", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			BaseURL string `json:"base_url"`
-			APIKey  string `json:"api_key"`
-			Model   string `json:"model"`
+			BaseURL  string `json:"base_url"`
+			APIKey   string `json:"api_key"`
+			Model    string `json:"model"`
+			Provider string `json:"provider"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.BaseURL == "" || req.APIKey == "" || req.Model == "" {
 			writeJSON(w, 400, `{"ok":false,"error":"falta base_url, api_key o model"}`)
 			return
 		}
-		body, _ := json.Marshal(map[string]any{
+		body := map[string]any{
 			"model": req.Model,
 			"messages": []map[string]string{{"role": "user", "content": "Reply with the single word: OK"}},
-			"max_tokens": 5, "thinking": map[string]string{"type": "disabled"},
-		})
-		hr, _ := http.NewRequest("POST", strings.TrimRight(req.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
+			"max_tokens": 5,
+		}
+		if req.Provider == "glm" {
+			body["thinking"] = map[string]string{"type": "disabled"}
+		}
+		raw, _ := json.Marshal(body)
+		hr, _ := http.NewRequest("POST", strings.TrimRight(req.BaseURL, "/")+"/chat/completions", bytes.NewReader(raw))
 		hr.Header.Set("Authorization", "Bearer "+req.APIKey)
 		hr.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(hr)

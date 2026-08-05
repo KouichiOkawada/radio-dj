@@ -21,6 +21,7 @@ import (
 )
 
 type DJ struct {
+	provider               string
 	baseURL, apiKey, model string
 	station, location      string
 	p                      i18n.Prompts
@@ -64,9 +65,11 @@ type (
 	}
 )
 
-// New builds a DJ. p is the localized prompt set (see internal/i18n).
-func New(baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
-	return &DJ{baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location, p: p}
+// New builds a DJ. provider is the LLM preset (glm/openai/openrouter/...) —
+// only "glm" accepts the thinking-disabled field; others reject it. p is the
+// localized prompt set (see internal/i18n).
+func New(provider, baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
+	return &DJ{provider: provider, baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location, p: p}
 }
 
 // systemPrompt fills the standing persona with station + location.
@@ -197,7 +200,9 @@ func (d *DJ) complete(user string, search bool) string {
 			{"role": "user", "content": user},
 		},
 		"max_tokens": 160,
-		"thinking":   map[string]string{"type": "disabled"},
+	}
+	if d.provider == "glm" {
+		body["thinking"] = map[string]string{"type": "disabled"}
 	}
 	if search {
 		body["web_search"] = true
@@ -242,8 +247,10 @@ func (d *DJ) completeJSON(system, user string) string {
 			{"role": "user", "content": user},
 		},
 		"max_tokens":      1200,
-		"thinking":        map[string]string{"type": "disabled"},
 		"response_format": map[string]string{"type": "json_object"},
+	}
+	if d.provider == "glm" {
+		body["thinking"] = map[string]string{"type": "disabled"}
 	}
 	raw, _ := json.Marshal(body)
 	req, err := http.NewRequest("POST", strings.TrimRight(d.baseURL, "/")+"/chat/completions", bytes.NewReader(raw))
