@@ -4,6 +4,8 @@ import (
 	_ "embed"
 	"net/http"
 	"text/template"
+
+	"radio-dj/internal/i18n"
 )
 
 // indexPage — neo-brutalist player: thick borders, hard offset shadows, bold
@@ -40,9 +42,21 @@ var appleTouchIcon []byte
 
 var indexTmpl = template.Must(template.New("index").Parse(indexHTML))
 
-func serveIndex(w http.ResponseWriter) {
+func (s *Server) serveIndex(w http.ResponseWriter) {
+	p, _ := i18n.Load(s.lang)
+	data := struct {
+		Next, TabHistory, TabDJ, Recording, Send, NoRequests, NothingPlayed string
+	}{
+		Next:          p.Get("ui_next"),
+		TabHistory:    p.Get("ui_tab_history"),
+		TabDJ:         p.Get("ui_tab_djlog"),
+		Recording:     p.Get("ui_recording"),
+		Send:          p.Get("ui_send"),
+		NoRequests:    p.Get("ui_no_requests"),
+		NothingPlayed: p.Get("ui_nothing_played"),
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = indexTmpl.Execute(w, nil)
+	_ = indexTmpl.Execute(w, data)
 }
 
 // serveFont serves the self-hosted Permanent Marker woff2 (30KB) with a

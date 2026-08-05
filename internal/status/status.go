@@ -57,6 +57,7 @@ type Server struct {
 	dir        string
 	requests   []Request // raw, unresolved
 	needsSetup bool
+	lang       string // config.Language ("es"|"en") — drives the index UI strings
 	// icecast admin API for listener counts (lazy, cached 3s)
 	icBase     string
 	icPw       string
@@ -68,6 +69,11 @@ type Server struct {
 func New(stateDir string, needsSetup bool) *Server {
 	_ = os.MkdirAll(stateDir, 0o755)
 	return &Server{dir: stateDir, needsSetup: needsSetup, subs: map[chan NowPlaying]struct{}{}}
+}
+
+// SetLanguage stores the UI language for the index template strings.
+func (s *Server) SetLanguage(lang string) {
+	s.lang = lang
 }
 
 // SetCurrent publishes the current + next track (called by the radio loop as
@@ -422,7 +428,7 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
 			return
 		}
-		serveIndex(w)
+		s.serveIndex(w)
 	})
 	go func() {
 		if err := http.ListenAndServe(":"+strconv.Itoa(port), mux); err != nil {
