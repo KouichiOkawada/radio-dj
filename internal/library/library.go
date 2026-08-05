@@ -64,18 +64,7 @@ type folder struct {
 
 func newFolder(root string) (*folder, error) {
 	var files []string
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if isAudio(p) {
-			files = append(files, p)
-		}
-		return nil
-	})
+	err := walkAudio(root, map[string]bool{}, &files)
 	if err != nil {
 		return nil, fmt.Errorf("walk %s: %w", root, err)
 	}
@@ -322,6 +311,44 @@ func (n *navidrome) refill() error {
 var audioExts = map[string]bool{".mp3": true, ".m4a": true, ".flac": true, ".wav": true, ".ogg": true, ".opus": true}
 
 func isAudio(p string) bool { return audioExts[strings.ToLower(filepath.Ext(p))] }
+
+// walkAudio recursively collects audio files under dir into *files, following
+// symlinks (directories and files) so libraries mounted via symlinked shares
+// (NAS/gvfs mounts, per-artist symlink trees, etc.) get scanned instead of
+// silently yielding zero tracks. seen tracks resolved real paths already
+// visited to avoid infinite loops on symlink cycles.
+func walkAudio(dir string, seen map[string]bool, files *[]string) error {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil // broken symlink or missing dir — skip quietly
+	}
+	if seen[real] {
+		return nil // already visited (symlink cycle)
+	}
+	seen[real] = true
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		info, err := os.Stat(p) // follows symlinks
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			if err := walkAudio(p, seen, files); err != nil {
+				return err
+			}
+			continue
+		}
+		if isAudio(p) {
+			*files = append(*files, p)
+		}
+	}
+	return nil
+}
 
 func stripExt(name string) string { return strings.TrimSuffix(name, filepath.Ext(name)) }
 
