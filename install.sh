@@ -36,30 +36,39 @@ say "installing radio-dj ($OS/$ARCH) → $INSTALL_DIR"
 
 # --- 1. runtime deps ---
 install_deps() {
-  say "runtime deps (icecast, ffmpeg)"
-  case "$OS" in
-    darwin)
-      command -v brew >/dev/null || die "Homebrew not found — install it from https://brew.sh first"
-      brew install icecast ffmpeg
-      ;;
-    linux)
-      if command -v apt-get >/dev/null; then
-        sudo apt-get update -qq && sudo apt-get install -y icecast2 ffmpeg
-      elif command -v dnf >/dev/null; then
-        sudo dnf install -y icecast ffmpeg
-      else
-        die "install icecast + ffmpeg with your package manager, then re-run this script"
-      fi
-      ;;
-  esac
-  # edge-tts provides the default Spanish (es-CO) voice
-  say "voice (edge-tts)"
-  if command -v pipx >/dev/null; then
-    pipx install edge-tts || pipx upgrade edge-tts
-  elif command -v pip3 >/dev/null; then
-    pip3 install --user edge-tts
+  # icecast + ffmpeg: skip the package-manager step when both are present.
+  if command -v icecast >/dev/null && command -v ffmpeg >/dev/null; then
+    green "icecast + ffmpeg already installed"
   else
-    say "(skipped — install later with: pipx install edge-tts)"
+    say "runtime deps (icecast, ffmpeg)"
+    case "$OS" in
+      darwin)
+        command -v brew >/dev/null || die "Homebrew not found — install it from https://brew.sh first"
+        brew install icecast ffmpeg
+        ;;
+      linux)
+        if command -v apt-get >/dev/null; then
+          sudo apt-get update -qq && sudo apt-get install -y icecast2 ffmpeg
+        elif command -v dnf >/dev/null; then
+          sudo dnf install -y icecast ffmpeg
+        else
+          die "install icecast + ffmpeg with your package manager, then re-run this script"
+        fi
+        ;;
+    esac
+  fi
+  # edge-tts provides the default Spanish (es-CO) voice
+  if command -v edge-tts >/dev/null; then
+    green "edge-tts already installed"
+  else
+    say "voice (edge-tts)"
+    if command -v pipx >/dev/null; then
+      pipx install edge-tts || pipx upgrade edge-tts
+    elif command -v pip3 >/dev/null; then
+      pip3 install --user edge-tts
+    else
+      say "(skipped — install later with: pipx install edge-tts)"
+    fi
   fi
 }
 
