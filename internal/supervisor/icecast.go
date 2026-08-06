@@ -37,7 +37,7 @@ func findIcecast() (string, error) {
 	}
 	for _, p := range []string{
 		"/opt/homebrew/bin/icecast", // macOS Apple Silicon
-		"/usr/local/bin/icecast",   // macOS Intel / manual install
+		"/usr/local/bin/icecast",    // macOS Intel / manual install
 		"/opt/homebrew/opt/icecast/bin/icecast",
 		"/usr/bin/icecast", // Linux
 	} {
@@ -48,7 +48,7 @@ func findIcecast() (string, error) {
 	return "", fmt.Errorf("icecast binary not found — install it (macOS: `brew install icecast`)")
 }
 
-func EnsureIcecast(stateDir, host string, port int) (*Icecast, error) {
+func EnsureIcecast(stateDir, host string, port int, mount string) (*Icecast, error) {
 	bin, err := findIcecast()
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func EnsureIcecast(stateDir, host string, port int) (*Icecast, error) {
 	if src == "" {
 		src = randHex(12)
 		adm = randHex(12)
-		if err := os.WriteFile(cfgPath, []byte(renderConfig(stateDir, host, port, src, adm)), 0o644); err != nil {
+		if err := os.WriteFile(cfgPath, []byte(renderConfig(stateDir, host, port, src, adm, mount)), 0o644); err != nil {
 			return nil, err
 		}
 	}
@@ -181,8 +181,8 @@ func randHex(n int) string {
 
 // renderConfig builds an icecast.xml with a generous source-timeout (the
 // persistent master has brief gaps between decoders that the default 10s
-// timeout rejects) and a /stream.mp3 mount.
-func renderConfig(stateDir, host string, port int, sourcePw, adminPw string) string {
+// timeout rejects) and a /stream.aac mount.
+func renderConfig(stateDir, host string, port int, sourcePw, adminPw, mount string) string {
 	logs := filepath.Join(stateDir, "logs")
 	return fmt.Sprintf(`<icecast>
   <location>Earth</location>
@@ -211,12 +211,12 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw string) str
   </paths>
   <logging><accesslog>access.log</accesslog><errorlog>error.log</errorlog><loglevel>2</loglevel></logging>
   <mount>
-    <mount-name>/stream.mp3</mount-name>
+    <mount-name>%s</mount-name>
     <burst-size>65536</burst-size>
     <stream-name>radio-dj</stream-name>
   </mount>
 </icecast>
-`, sourcePw, sourcePw, adminPw, host, port, brewPrefix(), logs, brewPrefix(), brewPrefix())
+`, sourcePw, sourcePw, adminPw, host, port, brewPrefix(), logs, brewPrefix(), brewPrefix(), mount)
 }
 
 // brewPrefix returns the homebrew prefix for icecast's share dir (macOS).

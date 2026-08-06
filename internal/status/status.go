@@ -58,17 +58,18 @@ type Server struct {
 	requests   []Request // raw, unresolved
 	needsSetup bool
 	lang       string // config.Language ("es"|"en") — drives the index UI strings
+	mount      string // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
 	// icecast admin API for listener counts (lazy, cached 3s)
-	icBase     string
-	icPw       string
+	icBase      string
+	icPw        string
 	icListeners int
-	icCacheT   time.Time
-	subs       map[chan NowPlaying]struct{} // SSE subscribers for /events
+	icCacheT    time.Time
+	subs        map[chan NowPlaying]struct{} // SSE subscribers for /events
 }
 
-func New(stateDir string, needsSetup bool) *Server {
+func New(stateDir string, needsSetup bool, mount string) *Server {
 	_ = os.MkdirAll(stateDir, 0o755)
-	return &Server{dir: stateDir, needsSetup: needsSetup, subs: map[chan NowPlaying]struct{}{}}
+	return &Server{dir: stateDir, needsSetup: needsSetup, mount: mount, subs: map[chan NowPlaying]struct{}{}}
 }
 
 // SetLanguage stores the UI language for the index template strings.
@@ -383,8 +384,8 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			return
 		}
 		body := map[string]any{
-			"model": req.Model,
-			"messages": []map[string]string{{"role": "user", "content": "Reply with the single word: OK"}},
+			"model":      req.Model,
+			"messages":   []map[string]string{{"role": "user", "content": "Reply with the single word: OK"}},
 			"max_tokens": 5,
 		}
 		if req.Provider == "glm" {
@@ -407,13 +408,14 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		}
 		writeJSON(w, 200, `{"ok":true}`)
 	})
-	// /stream.mp3 reverse-proxies icecast so the player works behind a single
+	// s.mount reverse-proxies icecast so the player works behind a single
 	// origin (funnel/serve HTTPS) without mixed-content, AND on direct LAN.
-	// FlushInterval=-1 streams the live mp3 without buffering.
+	// FlushInterval=-1 streams the live audio without buffering. The path
+	// follows cfg.IcecastMount, which the <audio> src mirrors via {{.StreamPath}}.
 	if upstream, err := url.Parse("http://127.0.0.1:7702"); err == nil { // ponytail: icecast internal port is fixed
 		rp := httputil.NewSingleHostReverseProxy(upstream)
 		rp.FlushInterval = -1
-		mux.Handle("/stream.mp3", rp)
+		mux.Handle(s.mount, rp)
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

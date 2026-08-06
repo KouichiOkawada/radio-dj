@@ -9,7 +9,7 @@ needs — a mobile app, PanelHUD, Home Assistant, a hardware radio — is HTTP.
 | Service | URL |
 |---|---|
 | API + UI | `http://<host>:7710` |
-| Audio stream | `http://<host>:7702/stream.mp3` |
+| Audio stream | `http://<host>:7702/stream.aac` |
 
 ---
 
@@ -42,10 +42,13 @@ Content-Type: application/json
 → 200  { "text": "play some Bowie", "askedAt": "...", "status": "queued" }
 ```
 
-### `GET /stream.mp3`
-The broadcast — an MP3 stream (default 192 kbps, 44.1 kHz, stereo). Point any
-`<audio>` element, VLC, Sonos, or car receiver here. One shared stream: every
-listener hears the same thing at the same time (it's radio, not on-demand).
+### `GET /stream.aac`
+The broadcast — an AAC stream (default 192 kbps, 44.1 kHz, stereo). The encoder is
+platform-aware: `aac_at` (Apple AudioToolbox, hardware-accelerated) on macOS,
+ffmpeg's built-in `aac` elsewhere; override with `RDJ_ENCODER` (e.g.
+`libmp3lame` → `/stream.mp3`). Point any `<audio>` element, VLC, Sonos, or car
+receiver here. One shared stream: every listener hears the same thing at the
+same time (it's radio, not on-demand).
 
 ### `GET /listen.pls` · `GET /listen.m3u`
 Playlist wrappers around the stream for players that prefer a playlist file
@@ -74,7 +77,7 @@ consider Icecast listener-auth on the stream mount.
 ## Integration recipes
 
 ### Mobile app (iOS/Android, any)
-- Audio: `<audio src="http://<host>:7702/stream.mp3">` (or a native player).
+- Audio: `<audio src="http://<host>:7702/stream.aac">` (or a native player).
 - Metadata: poll `GET /now-playing` every 5s, render title/artist + cover.
 - Requests: `POST /request` from a text field.
 

@@ -101,6 +101,9 @@ export ZAI_API_KEY=your_key             # GLM-5.2 (any OpenAI-compatible works)
 export RDJ_LIBRARY=~/Music/library      # your music folder
 export RDJ_LOCATION="La Paz"            # for time + weather
 export RDJ_VOICE_CMD="edge-tts --voice es-CO-SalomeNeural --text {text} --write-media {out}"
+# Optional: override the broadcast encoder (default: aac_at on macOS, aac elsewhere).
+# The stream mount follows it: aac → /stream.aac, libmp3lame → /stream.mp3.
+# export RDJ_ENCODER=libmp3lame
 ```
 
 ### Always-on service (survives reboots)
@@ -110,7 +113,7 @@ radio-dj install      # macOS → launchd agent · Linux → systemd user unit o
 radio-dj uninstall    # stop and remove the service
 ```
 
-Then open **http://localhost:7710** (UI) and **http://localhost:7702/stream.mp3** (stream).
+Then open **http://localhost:7710** (UI) and **http://localhost:7702/stream.aac** (stream).
 
 ### Install as an app (PWA)
 
@@ -157,7 +160,7 @@ Simple HTTP — works with any client (mobile app, Home Assistant, PanelHUD):
 |---|---|---|
 | `GET` | `/now-playing` | current + next track, requests, status |
 | `POST` | `/request` | `{"from":"María","text":"Bohemian Rhapsody"}` — request a song |
-| `GET` | `/stream.mp3` | the audio stream (Icecast) |
+| `GET` | `/stream.aac` | the audio stream (Icecast) |
 | `GET` | `/listen.pls` · `/listen.m3u` | playlist for Sonos/VLC/car |
 | `GET` | `/health` | liveness |
 

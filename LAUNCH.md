@@ -44,7 +44,7 @@ radio-dj outputs a **standard Icecast / HTTP-MP3 stream**. SUB/WAVE's manual say
 the same thing about itself: *"Tune in from the native apps, **VLC, or any app
 that opens an internet-radio stream**."* There is no proprietary protocol.
 
-So the `http://your-host:7702/stream.mp3` URL is universally connectable,
+So the `http://your-host:7702/stream.aac` URL is universally connectable,
 **today, with zero extra work**:
 
 - **VLC, mpv, foobar, any browser** — paste the URL.

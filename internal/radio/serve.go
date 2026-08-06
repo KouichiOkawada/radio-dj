@@ -3,6 +3,7 @@
 //   - A producer goroutine builds the NEXT tanda (GLM+qohl voices) while the
 //     current one plays, so the master always has PCM to encode → it never
 //     starves → icecast never drops the source → no 404 between tandas.
+//
 // Now-playing is set synchronously when each track starts (no timing drift).
 package radio
 
@@ -30,8 +31,8 @@ import (
 type Segment struct {
 	Path     string
 	IsVoice  bool
-	LiveTime bool // voice generated at air-time (clock skill) — no pre-baked Path
-	Midroll  bool // voice fires mid-song (~50%), not at the start
+	LiveTime bool          // voice generated at air-time (clock skill) — no pre-baked Path
+	Midroll  bool          // voice fires mid-song (~50%), not at the start
 	Meta     library.Track // valid when !IsVoice
 	Text     string        // DJ speech text — logged at air-time, not build-time
 	Req      string        // request text that matched this track — air-time log
@@ -66,11 +67,11 @@ func Serve(cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("library: %w", err)
 	}
-	st := status.New(cfg.StateDir, cfg.NeedsSetup())
+	st := status.New(cfg.StateDir, cfg.NeedsSetup(), cfg.IcecastMount)
 	st.SetLanguage(cfg.Language)
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
-	log.Printf("[radio-dj] UI :%d · stream :%d/stream.mp3 · POST /request", cfg.StatusPort, cfg.IcecastPort)
+	log.Printf("[radio-dj] UI :%d · stream :%d/stream.aac · POST /request", cfg.StatusPort, cfg.IcecastPort)
 
 	var djx *dj.DJ
 	var vox *voice.Voice
@@ -92,7 +93,7 @@ func Serve(cfg config.Config) error {
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
 	if srcPw == "" {
-		ic, ierr := supervisor.EnsureIcecast(cfg.StateDir, cfg.IcecastHost, cfg.IcecastPort)
+		ic, ierr := supervisor.EnsureIcecast(cfg.StateDir, cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount)
 		if ierr != nil {
 			return fmt.Errorf("ensure icecast: %w", ierr)
 		}
@@ -101,7 +102,7 @@ func Serve(cfg config.Config) error {
 		log.Printf("[radio-dj] icecast supervisado (source pw %s…)", srcPw[:8])
 	}
 
-	streamer, err := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, srcPw, cfg.StationName, cfg.Bitrate)
+	streamer, err := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
 	if err != nil {
 		return fmt.Errorf("open streamer: %w", err)
 	}
@@ -178,7 +179,7 @@ func Serve(cfg config.Config) error {
 				pendingVoiceText = ""
 				go func() {
 					time.Sleep(700 * time.Millisecond) // let the intro land
-					logDJ(status.LogKindDJ, vt) // air-time: the intro overlays the song now
+					logDJ(status.LogKindDJ, vt)        // air-time: the intro overlays the song now
 					if err := streamer.Interject(vf); err != nil {
 						log.Printf("[dj] interject: %v", err)
 					}
@@ -209,7 +210,7 @@ func Serve(cfg config.Config) error {
 			if !streamer.Alive() {
 				log.Printf("[radio-dj] master caído — reabriendo source")
 				streamer.Close()
-				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, srcPw, cfg.StationName, cfg.Bitrate)
+				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
 				if err != nil {
 					log.Printf("[radio-dj] reopen failed: %v — retry 5s", err)
 					time.Sleep(5 * time.Second)

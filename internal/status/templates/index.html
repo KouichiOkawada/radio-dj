@@ -435,7 +435,7 @@
   const audio = document.getElementById('audio');
   // src is (re)assigned on every play so stop() can release it and free the
   // progressive-download buffer WebKit otherwise retains after a long session.
-  function playStream(){ audio.src = 'stream.mp3'; return audio.play(); }
+  function playStream(){ audio.src = '{{.StreamPath}}'; return audio.play(); }
   const $ = id => document.getElementById(id);
   const deck = $('deck');
 
@@ -507,7 +507,7 @@
     setAudioState('idle');
     reconnectTimer = setTimeout(()=>{
       reconnectTimer = null;
-      audio.src = 'stream.mp3?t=' + Date.now();
+      audio.src = '{{.StreamPath}}?t=' + Date.now();
       setAudioState('connecting');
       audio.play().catch(()=>{});
     }, 2500);

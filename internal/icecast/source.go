@@ -5,6 +5,7 @@
 //	pipe:4 = voice (silence when idle, DJ banter on interject)
 //
 //	sidechaincompress ducks the music whenever voice is present, amix overlays
+//
 // the voice on top — so the DJ can talk OVER a song mid-playback without
 // stopping it. Mirrors how a hardware radio mixer's ducking bus works.
 package icecast
@@ -16,6 +17,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"radio-dj/internal/codec"
 )
 
 // chunkBytes = 100ms of s16le 44100Hz stereo PCM = 44100*2*2*0.1.
@@ -44,7 +47,7 @@ func findFFmpeg() (string, error) {
 	}
 	for _, p := range []string{
 		"/opt/homebrew/bin/ffmpeg", // macOS Apple Silicon
-		"/usr/local/bin/ffmpeg",   // macOS Intel / manual install
+		"/usr/local/bin/ffmpeg",    // macOS Intel / manual install
 		"/opt/homebrew/opt/ffmpeg/bin/ffmpeg",
 		"/usr/bin/ffmpeg", // Linux
 	} {
@@ -55,13 +58,14 @@ func findFFmpeg() (string, error) {
 	return "", fmt.Errorf("ffmpeg binary not found — install it (macOS: `brew install ffmpeg`)")
 }
 
-func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate int) (*Streamer, error) {
+func OpenStreamer(host string, port int, mount, encoder, sourcePw, name string, bitrate int) (*Streamer, error) {
 	ffmpegBin, err := findFFmpeg()
 	if err != nil {
 		return nil, err
 	}
 	// [0:a]=music, [1:a]=voice. sidechaincompress ducks music on voice; amix
 	// overlays voice. release=600ms = smooth fade back up after the DJ stops.
+	m := codec.MetaFor(encoder)
 	filter := "[0:a][1:a]sidechaincompress=threshold=0.015:ratio=12:attack=5:release=600[d];" +
 		"[d][1:a]amix=inputs=2:duration=first:normalize=0:weights=1 1.3[a]"
 	master := exec.Command(ffmpegBin,
@@ -70,8 +74,8 @@ func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate i
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:4",
 		"-filter_complex", filter,
 		"-map", "[a]",
-		"-c:a", "libmp3lame", "-b:a", strconv.Itoa(bitrate)+"k", "-ar", "44100", "-ac", "2",
-		"-content_type", "audio/mpeg", "-f", "mp3", "-ice_name", name,
+		"-c:a", m.Encoder, "-b:a", strconv.Itoa(bitrate)+"k", "-ar", "44100", "-ac", "2",
+		"-content_type", m.ContentType, "-f", m.Format, "-ice_name", name,
 		fmt.Sprintf("icecast://source:%s@%s:%d%s", sourcePw, host, port, mount),
 	)
 	mr, mw, err := os.Pipe()
@@ -80,13 +84,17 @@ func OpenStreamer(host string, port int, mount, sourcePw, name string, bitrate i
 	}
 	vr, vw, err := os.Pipe()
 	if err != nil {
-		mr.Close(); mw.Close()
+		mr.Close()
+		mw.Close()
 		return nil, fmt.Errorf("voice pipe: %w", err)
 	}
 	master.ExtraFiles = []*os.File{mr, vr} // → fd 3 (music), fd 4 (voice)
 	master.Stderr = os.Stderr
 	if err := master.Start(); err != nil {
-		mr.Close(); mw.Close(); vr.Close(); vw.Close()
+		mr.Close()
+		mw.Close()
+		vr.Close()
+		vw.Close()
 		return nil, fmt.Errorf("master ffmpeg: %w", err)
 	}
 	s := &Streamer{

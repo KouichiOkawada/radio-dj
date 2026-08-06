@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"radio-dj/internal/codec"
 )
 
 type Config struct {
@@ -22,21 +24,22 @@ type Config struct {
 	IcecastPort     int
 	IcecastSourcePW string
 	IcecastMount    string
+	Encoder         string // ffmpeg audio encoder (aac_at | aac | libmp3lame) — drives format + mount
 	StationName     string
 	Bitrate         int
 	Chunk           int
 
-	DJEnabled bool
-	DJEvery   int // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
-	DJTalk    string // poco | regular | mucho | verboso — how chatty the director is
-	GLMBaseURL string
-	GLMAPIKey  string
-	GLMModel   string
-	LLMProvider string // preset name (glm/openai/openrouter/...)
+	DJEnabled     bool
+	DJEvery       int    // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
+	DJTalk        string // poco | regular | mucho | verboso — how chatty the director is
+	GLMBaseURL    string
+	GLMAPIKey     string
+	GLMModel      string
+	LLMProvider   string // preset name (glm/openai/openrouter/...)
 	VoiceProvider string // edge-tts | piper | say
 	Voice         string // voice id for the provider
-	VoiceCmd   string // raw override (power users); empty = use provider+voice
-	Bed        string
+	VoiceCmd      string // raw override (power users); empty = use provider+voice
+	Bed           string
 
 	LocationName string
 	Latitude     float64
@@ -92,6 +95,8 @@ func normalizeTalk(s string) string {
 func Load() Config {
 	dir := defaultStateDir()
 	f := loadFile(dir)
+	enc := codec.Resolve()
+	mount := getenv("RDJ_ICECAST_MOUNT", "/stream"+codec.MetaFor(enc).Suffix)
 	c := Config{
 		Source:          pick("RDJ_SOURCE", f.Source, "folder"),
 		Library:         pick("RDJ_LIBRARY", f.Library, os.Getenv("HOME")+"/Music/library"),
@@ -101,7 +106,8 @@ func Load() Config {
 		IcecastHost:     getenv("RDJ_ICECAST_HOST", "localhost"),
 		IcecastPort:     getint("RDJ_ICECAST_PORT", 7702),
 		IcecastSourcePW: os.Getenv("RDJ_ICECAST_SOURCE_PW"),
-		IcecastMount:    getenv("RDJ_ICECAST_MOUNT", "/stream.mp3"),
+		IcecastMount:    mount,
+		Encoder:         enc,
 		StationName:     pick("RDJ_STATION_NAME", f.StationName, "radio-dj"),
 		Bitrate:         pickInt("RDJ_BITRATE", f.Bitrate, 192),
 		Chunk:           pickInt("RDJ_CHUNK", f.Chunk, 8),

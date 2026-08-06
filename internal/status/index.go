@@ -2,8 +2,8 @@ package status
 
 import (
 	_ "embed"
-	"net/http"
 	"html/template"
+	"net/http"
 	"strings"
 
 	"radio-dj/internal/i18n"
@@ -56,11 +56,12 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		}
 	}
 	data := struct {
-		Lang                                                    string
-		Next, TabHistory, TabDJ, TabRequests, Recording, Send   string
-		PhName, PhRequest, Hint                                 string
-		AriaCassette, AriaFfwd, AriaRew, AriaRec                string
-		I18n                                                    map[string]string
+		Lang                                                  string
+		Next, TabHistory, TabDJ, TabRequests, Recording, Send string
+		PhName, PhRequest, Hint                               string
+		AriaCassette, AriaFfwd, AriaRew, AriaRec              string
+		StreamPath                                            string
+		I18n                                                  map[string]string
 	}{
 		Lang:         s.lang,
 		Next:         p.Get("ui_next"),
@@ -76,6 +77,7 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		AriaFfwd:     p.Get("ui_aria_ffwd"),
 		AriaRew:      p.Get("ui_aria_rew"),
 		AriaRec:      p.Get("ui_aria_rec"),
+		StreamPath:   strings.TrimPrefix(s.mount, "/"),
 		I18n:         ui,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -49,7 +49,7 @@ func Install(bin string) error {
 		return err
 	}
 	fmt.Printf("✓ radio-dj running in background (%s)\n", label)
-	fmt.Printf("  UI:       http://localhost:7710\n  stream:   http://localhost:7702/stream.mp3\n")
+	fmt.Printf("  UI:       http://localhost:7710\n  stream:   http://localhost:7702/stream.aac\n")
 	fmt.Printf("  logs:     %s/radio-dj.{out,err}.log\n  uninstall: %s uninstall\n", stateDir(), stable)
 	return nil
 }
