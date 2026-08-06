@@ -132,10 +132,13 @@ func Load() Config {
 	return c
 }
 
-// NeedsSetup reports whether the DJ isn't configured yet (first run).
-// Voice counts as configured if either a provider+voice pair OR a raw
-// VoiceCmd is present — the onboarding wizard sets the former.
+// NeedsSetup reports whether the first-run wizard still needs to be shown.
+// A saved config is enough to complete setup: AI and voice are optional, and
+// music-only stations must still be able to open the player UI.
 func (c Config) NeedsSetup() bool {
+	if _, err := os.Stat(filepath.Join(c.StateDir, "config.json")); err == nil {
+		return false
+	}
 	if c.GLMAPIKey == "" {
 		return true
 	}
