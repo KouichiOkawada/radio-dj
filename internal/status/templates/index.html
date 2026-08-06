@@ -607,7 +607,10 @@
       if(!entries.length){ pre.innerHTML = '<span class="empty">'+T.ui_no_djlog+'</span>'; return; }
       pre.innerHTML = entries.reverse().slice(0,120).map(e=>{
         const lbl = T['log_kind_'+e.kind] || e.kind;
-        return esc(e.t)+' <b>['+lbl+']</b> '+esc(e.text);
+        // legacy lines (no kind) are raw "HH:MM:SS [DJ] text" — show as-is;
+        // structured entries render the localized kind label.
+        const head = lbl ? esc(e.t)+' <b>['+lbl+']</b> ' : '';
+        return head + esc(e.text);
       }).join('\n');
     }catch(_){}
   }
