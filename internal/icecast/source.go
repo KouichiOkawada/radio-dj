@@ -27,13 +27,15 @@ const chunkBytes = 17640
 // Streamer holds the persistent master + the two pipe write ends. The voice
 // pipe is owned by a feeder goroutine that paces silence/voice at real-time.
 type Streamer struct {
-	master *exec.Cmd
-	w      *os.File // music PCM (fd 3)
-	vw     *os.File // voice PCM (fd 4)
-	voiceQ chan []byte
-	done   chan struct{}
-	mu     sync.Mutex // guards vw writes
-	ffmpeg string     // resolved ffmpeg binary (launchd has a minimal PATH)
+	master    *exec.Cmd
+	w         *os.File // music PCM (fd 3)
+	vw        *os.File // voice PCM (fd 4)
+	voiceQ    chan []byte
+	done      chan struct{}
+	mu        sync.Mutex // guards vw writes
+	decoderMu sync.Mutex // guards decoder
+	decoder   *exec.Cmd  // in-flight music decoder, nil between songs
+	ffmpeg    string     // resolved ffmpeg binary (launchd has a minimal PATH)
 }
 
 // OpenStreamer starts the master with the ducking filtergraph. Both inputs are
@@ -139,14 +141,47 @@ func (s *Streamer) voiceFeeder() {
 }
 
 // Play decodes one music segment to PCM (paced by -re) and writes it to the
-// music pipe. Music-only now — ducking is live via the voice input.
+// music pipe. Music-only now — ducking is live via the voice input. The
+// decoder is registered so SkipCurrent can kill it; it is cleared on return
+// whether the song ended naturally or was skipped.
 func (s *Streamer) Play(segment string) error {
 	dec := exec.Command(s.ffmpeg,
 		"-loglevel", "error", "-re", "-i", segment,
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1")
 	dec.Stdout = s.w
 	dec.Stderr = os.Stderr
-	return dec.Run()
+	if err := dec.Start(); err != nil {
+		return err
+	}
+	s.setDecoder(dec)
+	defer s.setDecoder(nil)
+	return dec.Wait()
+}
+
+// SkipCurrent kills the in-flight music decoder WITHOUT touching the master
+// Icecast source — connected listeners stay on, the live stream keeps flowing
+// (the filtergraph just stops receiving new music PCM). Play() returns and the
+// radio loop advances to the next/previous track. Returns false when no
+// decoder is active (nothing to skip).
+func (s *Streamer) SkipCurrent() bool {
+	// nil receiver: a failed reopen leaves the loop's streamer nil, and this is
+	// the one method reachable from an HTTP goroutine — never panic a request.
+	if s == nil {
+		return false
+	}
+	s.decoderMu.Lock()
+	defer s.decoderMu.Unlock()
+	if s.decoder == nil || s.decoder.Process == nil {
+		return false
+	}
+	_ = s.decoder.Process.Kill()
+	return true
+}
+
+func (s *Streamer) setDecoder(c *exec.Cmd) {
+	s.decoderMu.Lock()
+	s.decoder = c
+	s.decoderMu.Unlock()
 }
 
 // Interject decodes a voice file to PCM and queues it to the feeder — the

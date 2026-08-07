@@ -101,7 +101,7 @@
   /* bloque físico de la tecla */
   .key .cap{ position:relative; height:64px; border:3px solid var(--line); background:#e9e3d4;
     box-shadow:0 6px 0 #8f8672, 0 8px 0 var(--line);
-    transition:transform .06s ease-out, box-shadow .06s ease-out;
+    transition:transform .15s cubic-bezier(.2,.85,.3,1), box-shadow .15s cubic-bezier(.2,.85,.3,1), background .15s ease-out;
     display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
     padding-top:9px; overflow:hidden; }
   /* textura de rejilla */
@@ -121,7 +121,7 @@
   .key.down .cap{ background:#ded7c6; }
   .key.k-play.down .ico,.key.k-play.down .txt{ color:#1f3a1c; }
   .key.k-rec.down  .cap{ background:#f2c9bf; }
-  .key.k-rec.down .strip{ animation:recblink .9s steps(2) infinite; }
+  .key.k-rec.down .strip{ animation:recblink 1.4s ease-in-out infinite; }
   @keyframes recblink{ 50%{ background:#7a1f16; } }
   .key.connecting .cap{ animation:keypulse 1s steps(2) infinite; }
   @keyframes keypulse{ 50%{ background:#c9bda8; } }
@@ -381,13 +381,13 @@
             <span class="cap"><span class="ico">■</span><span class="txt">Stop</span><span class="strip"></span></span>
           </button>
           <button class="key k-ffwd" id="k-ffwd" aria-label="{{.AriaFfwd}}">
-            <span class="cap"><span class="ico">◀◀</span><span class="txt">F.Fwd</span><span class="strip"></span></span>
+            <span class="cap"><span class="ico">◀◀</span><span class="txt">{{.Previous}}</span><span class="strip"></span></span>
           </button>
           <button class="key k-play" id="k-play" aria-label="Play">
             <span class="cap"><span class="ico" id="play-ico">▶</span><span class="txt" id="play-txt">Play</span><span class="strip"></span></span>
           </button>
           <button class="key k-rew" id="k-rew" aria-label="{{.AriaRew}}">
-            <span class="cap"><span class="ico">▶▶</span><span class="txt">Rew</span><span class="strip"></span></span>
+            <span class="cap"><span class="ico">▶▶</span><span class="txt">{{.Skip}}</span><span class="strip"></span></span>
           </button>
           <button class="key k-rec" id="k-rec" aria-label="{{.AriaRec}}" aria-pressed="false">
             <span class="cap"><span class="ico">●</span><span class="txt">Rec</span><span class="strip"></span></span>
@@ -478,12 +478,42 @@
   kStop.onclick = ()=>{
     // Release the accumulated progressive-download buffer (currentTime is a no-op
     // on a live stream). Next play reassigns src via playStream().
+    releaseSkipKey(); // Stop pops every transport key — the cassette "chunk"
     audio.pause(); audio.removeAttribute('src'); audio.load();
     setAudioState('idle'); setRec(false);
   };
   kRec.onclick = ()=> setRec(!kRec.classList.contains('down'));
-  // teclas sin función (de momento): sólo el hundido momentáneo del :active
-  kFfwd.onclick = kRew.onclick = ()=>{};
+  // Cassette transport keys: ◀◀ = previous, ▶▶ = next. Server-side they kill
+  // the in-flight decoder (listeners stay connected). The key LATCHES down until
+  // the skip actually lands (track change via SSE) — like a real deck key staying
+  // engaged while it works — then springs back. ◀◀/▶▶ are mutually exclusive;
+  // Stop releases every transport key.
+  let engagedSkip = null; // {btn,timer} the latched skip key, or null when idle
+  function releaseSkipKey(){
+    if(!engagedSkip) return;
+    clearTimeout(engagedSkip.timer);
+    engagedSkip.btn.classList.remove('down');
+    engagedSkip.btn.disabled = false;
+    engagedSkip = null;
+  }
+  function control(action, button){
+    if(button.disabled) return;
+    releaseSkipKey(); // interlock: pressing a transport key releases the other
+    button.disabled = true;
+    button.classList.add('down');
+    engagedSkip = { btn: button, timer: setTimeout(releaseSkipKey, 4000) };
+    fetch('/control', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action})
+    }).then(res=>{
+      if(!res.ok) return res.text().then(t=>{ throw new Error(t); });
+    }).catch(err=>{
+      console.error('radio control failed', err);
+      releaseSkipKey(); // 409 / network error → spring back at once
+    });
+  }
+  kFfwd.onclick = ()=> control('previous', kFfwd);
+  kRew.onclick = ()=> control('next', kRew);
 
   audio.addEventListener('playing', ()=> setAudioState('playing'));
   audio.addEventListener('pause',   ()=>{ if(audioState!=='idle') setAudioState('idle'); });
@@ -553,6 +583,7 @@
         saveState();
       }
       lastTitle = c.title;
+      releaseSkipKey(); // a latched skip key just finished its job
     }
     metaTitle = c.title||''; metaArtist = c.artist||'';
     const clip = (s,n)=> s && s.length>n ? s.slice(0,n-1).trimEnd()+'…' : (s||'');
