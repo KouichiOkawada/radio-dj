@@ -32,6 +32,7 @@ type Streamer struct {
 	vw        *os.File // voice PCM (fd 4)
 	voiceQ    chan []byte
 	done      chan struct{}
+	closeOnce sync.Once  // Close runs from both defer + reopen — make it idempotent
 	mu        sync.Mutex // guards vw writes
 	decoderMu sync.Mutex // guards decoder
 	decoder   *exec.Cmd  // in-flight music decoder, nil between songs
@@ -210,10 +211,23 @@ func (s *Streamer) Alive() bool {
 	return s.master.ProcessState == nil
 }
 
-// Close shuts the master + feeder down cleanly.
+// Close shuts the master + feeder down cleanly. Idempotent: the radio loop
+// both defers Close (bound to the original streamer) and calls it again on
+// reopen, so a plain close(done) would panic the second time.
 func (s *Streamer) Close() {
-	close(s.done)
-	_ = s.w.Close()
-	_ = s.vw.Close()
-	_ = s.master.Wait()
+	s.closeOnce.Do(func() {
+		close(s.done)
+		_ = s.w.Close()
+		_ = s.vw.Close()
+		_ = s.master.Wait()
+	})
+}
+
+// KillMaster force-terminates the master ffmpeg so the radio loop's reopen
+// path can recover it. Used by the health watch when the master is alive but
+// its Icecast output is dead (half-open connection) — Alive() can't see that.
+func (s *Streamer) KillMaster() {
+	if s.master != nil && s.master.Process != nil {
+		_ = s.master.Process.Kill()
+	}
 }

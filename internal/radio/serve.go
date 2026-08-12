@@ -8,9 +8,12 @@
 package radio
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,7 +110,7 @@ func Serve(cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("open streamer: %w", err)
 	}
-	defer streamer.Close()
+	defer func() { streamer.Close() }() // closure: close whatever streamer is current at exit
 	// controls: skip/previous from the player UI. Buffered(1) so rapid clicks
 	// coalesce into one pending action; the loop drains it after Play returns.
 	controls := make(chan string, 1)
@@ -135,6 +138,42 @@ func Serve(cfg config.Config) error {
 	})
 	st.MarkPlaying(true)
 	log.Printf("[radio-dj] source persistente ON AIR ✓")
+
+	// Health watch: a sleeping laptop or network change can leave the master
+	// ffmpeg alive but with a dead (half-open) Icecast output — Alive() won't
+	// catch it, so the mount silently 404s. Poll Icecast's status-json every
+	// 30s; if our mount has no source for ~60s while the master claims running,
+	// the output is dead — kill the stuck process so the reopen path recovers.
+	go func() {
+		statusURL := fmt.Sprintf("http://%s:%d/status-json.xsl", cfg.IcecastHost, cfg.IcecastPort)
+		needle := []byte(cfg.IcecastMount)
+		misses := 0
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			has := false
+			if resp, err := http.Get(statusURL); err == nil {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				has = bytes.Contains(body, needle)
+			}
+			if has {
+				misses = 0
+				continue
+			}
+			misses++
+			if misses < 2 {
+				continue
+			}
+			controlMu.Lock()
+			if streamer.Alive() {
+				log.Printf("[radio-dj] icecast sin source %s — master zombie, forzando reopen", cfg.IcecastMount)
+				streamer.KillMaster()
+			}
+			controlMu.Unlock()
+			misses = 0
+		}
+	}()
 
 	// Producer: prefetch tandas so the master never starves.
 	prepared := make(chan []Segment, 2)
@@ -251,17 +290,24 @@ func Serve(cfg config.Config) error {
 			previousTrack = &played
 			if !streamer.Alive() {
 				log.Printf("[radio-dj] master caído — reabriendo source")
-				// The control handler closure reads `streamer` from the HTTP
-				// goroutine, so the swap must be serialized against it — hold
-				// controlMu across close+reopen. Both are fork/exec-bound (ffmpeg
-				// connects to Icecast on its own), so a concurrent /control waits
-				// milliseconds, and then sees the fresh source.
+				// Serialize the swap against the /control handler (it reads
+				// `streamer` under controlMu). Retry until OpenStreamer succeeds —
+				// a single failure must not leave streamer nil (next Alive() would
+				// panic). Keep the closed streamer until a fresh one is ready, so a
+				// concurrent /control hits a real (if dead) object, not nil.
 				controlMu.Lock()
 				streamer.Close()
-				streamer, err = icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
 				controlMu.Unlock()
-				if err != nil {
-					log.Printf("[radio-dj] reopen failed: %v — retry 5s", err)
+				for {
+					controlMu.Lock()
+					ns, rerr := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
+					if rerr == nil {
+						streamer = ns
+						controlMu.Unlock()
+						break
+					}
+					controlMu.Unlock()
+					log.Printf("[radio-dj] reopen failed: %v — retry 5s", rerr)
 					time.Sleep(5 * time.Second)
 				}
 			}
