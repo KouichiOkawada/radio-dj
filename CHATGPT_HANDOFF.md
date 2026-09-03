@@ -1,0 +1,120 @@
+# radio-dj Windows 化：ChatGPT 引き継ぎ資料
+
+## 目的
+
+Windows PC 上で、ローカル音楽ファイルを連続再生しながら、AI DJ の日本語コメントと RSS ニュースを挟む個人用ラジオを作る。
+
+目標の流れ：
+
+`音楽 → AI DJ → ニュース → 音楽 → …`
+
+Docker と WSL は使用しない。対象リポジトリは `C:\AI_TOOL\radio-dj`。
+
+## 現在の実行構成
+
+| 項目 | 現在値 |
+| --- | --- |
+| アプリ | `C:\AI_TOOL\radio-dj\radio-dj.exe` |
+| 作業ブランチ | `feature/news-radio` |
+| 音楽フォルダ | `C:\Radio\music` |
+| アプリ設定 | `C:\Users\pesu1\.radio-dj\config.json` |
+| UI | `http://127.0.0.1:7710` |
+| ストリーム | `http://127.0.0.1:7702/stream.mp3` |
+| LLM | Ollama `http://127.0.0.1:11434/v1` / `qwen3.5:4b` |
+| 日本語 TTS | `edge-tts` / `ja-JP-NanamiNeural` |
+| 配信サーバー | Icecast 2.5 (`C:\Program Files\Icecast`) |
+| ffmpeg | `C:\Users\pesu1\Desktop\ffmpeg-7.0.2-essentials_build\bin\ffmpeg.exe` |
+| RSS | NHK ニュース `https://www3.nhk.or.jp/rss/news/cat0.xml` |
+
+## 確認済みの事実
+
+- `C:\Radio\music` に MP3 が存在し、タグも読み取れている。
+- Ollama のモデル `qwen3.5:4b` はローカルに存在し、OpenAI 互換エンドポイントへ接続できる。
+- Icecast、radio-dj、ffmpeg が実行中。
+- `curl http://127.0.0.1:7702/stream.mp3` は HTTP 200 で MP3 データを返し、`ffprobe` で MP3 と判定済み。
+- `/now-playing` で曲情報を取得できる。
+- RSS は HTTP 200 で取得できる。
+- Edge TTS は日本語 MP3 の生成を確認済み。
+
+## 実装済みの変更
+
+1. Windows ネイティブ対応
+   - Windows 用タスクスケジューラの install/uninstall 実装。
+   - Windows のホーム・実行ファイルパス対応。
+   - Icecast / ffmpeg の Windows 検出。
+   - Windows は Go の `ExtraFiles` が使えないため、ffmpeg の stdin へ PCM を送る方式に変更。
+
+2. Ollama 対応
+   - `llm_provider: ollama` では API キーなしで DJ を有効化。
+   - 空の Authorization ヘッダーを送らない。
+
+3. 日本語対応
+   - `internal/i18n/prompts/ja.json` と `internal/i18n/skills/ja/` を追加。
+   - 設定の `language: ja` で日本語プロンプトを使用。
+
+4. RSS ニュース
+   - `internal/news/news.go` を追加。
+   - RSS / Atom の title / description だけを読み、出典名を付けて読み上げ原稿を決定的に生成する。
+   - ニュース本文を LLM に要約させないため、ニュース内容を捏造する経路はない。
+
+5. 日本語 TTS
+   - Windows では `edge-tts` をシェル経由でなく argv で直接起動し、日本語引数の文字化け・分割を回避。
+
+## 未解決の重要事項
+
+### 1. AI DJ の安定したオンエア挿入
+
+`qwen3.5:4b` は reasoning に多くのトークンを使う。構成 JSON の生成に時間がかかり、初回に Icecast が音源を受け取れない問題があった。
+
+現在は `internal/radio/serve.go` で Ollama 使用時だけ、起動直後の構成プランナーを回避して音楽を即時開始している。これにより音楽配信は安定したが、AI DJ の曲紹介をストリーム上で安定的に確認する作業が残っている。
+
+推奨方針：
+
+- 音楽の先読みキューと DJ 原稿生成を別 goroutine に分離する。
+- 曲の開始を LLM 応答待ちにしない。
+- DJ 原稿が準備できた場合だけ次の曲間へ挿入し、失敗時は無音ではなく音楽を続ける。
+- 4B モデルの structured JSON 生成を避け、短い曲紹介テキストだけを生成する設計も検討する。
+
+### 2. ニュースの重複生成
+
+現在の producer ループでは `news_every` 判定が同じ track count で複数回走る可能性がある。最後に放送したニュース時点を `stateDir` に記録し、同一 RSS エントリ・同一 tanda で繰り返さないようにする必要がある。
+
+### 3. Windows のダッキング
+
+Unix 版は二つの ffmpeg pipe により音楽をダッキングして DJ 音声を重ねる。Windows は Go の `ExtraFiles` 非対応のため単一 stdin PCM 方式であり、現状は曲間挿入を優先している。リアルタイムの曲中ダッキングは未完成。
+
+## 直近コミット
+
+```text
+8987f46 fix: start Ollama stations with music immediately
+599ed6a fix: allocate Ollama reasoning budget for DJ speech
+6d93b68 fix: preserve Japanese Edge TTS arguments on Windows
+e1b7d40 feat: add attributed RSS news bulletins
+175c173 fix: stream audio through stdin on Windows
+d19ec50 feat: add Japanese DJ prompts and Windows Icecast paths
+d1b8d0c fix: support local Ollama on Windows
+0f94961 feat: add native Windows runtime support
+```
+
+## すぐ使う確認コマンド（PowerShell）
+
+```powershell
+Get-Process radio-dj,icecast,ffmpeg -ErrorAction SilentlyContinue
+Invoke-RestMethod http://127.0.0.1:7710/now-playing
+curl.exe --max-time 5 --range 0-4095 -o $env:TEMP\stream.mp3 http://127.0.0.1:7702/stream.mp3
+ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1 $env:TEMP\stream.mp3
+Get-Content C:\Users\pesu1\.radio-dj\radio-dj.err.log -Tail 100
+```
+
+## 依頼文（他の ChatGPT へそのまま貼る用）
+
+```text
+C:\AI_TOOL\radio-dj の Windows ネイティブ AI ラジオ開発を引き継いでください。
+まず CHATGPT_HANDOFF.md を読み、Git の現在ブランチ feature/news-radio と実行状態を確認してください。
+
+音楽と RSS ニュースのストリームはすでに動いています。次の最優先事項は、Ollama qwen3.5:4b の応答待ちで音楽配信を止めずに、日本語 AI DJ の曲紹介を実際のストリームへ安定して挿入することです。
+
+ニュースは title / description のみを出典付きで読む設計を維持し、LLM にニュース本文を創作・要約させないでください。
+Docker / WSL は禁止です。Windows ネイティブで作業してください。
+変更前後に go test ./... と実ストリームの HTTP 200 / ffprobe 確認を行い、Git commit を残してください。
+```
