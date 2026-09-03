@@ -434,9 +434,9 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		}
 		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &item, Text: bulletin})
 		if djx != nil && vox != nil {
-			comment := djx.Say("次のニュースについて、事実を追加・要約・断定せず、聞き手が考えるきっかけになる短いラジオDJの一言を日本語で話してください。記事: " + item.Title)
+			comment := djx.NewsComment(item.Source, item.Title, item.Description)
 			if comment == "" {
-				comment = "ニュースは状況が変わることがあります。続報は信頼できる情報源で確認していきましょう。"
+				comment = "この話題、これからどう動くのか気になりますね。続報も確認していきたいところです。"
 			}
 			if vf, err := vox.Speak(comment); err == nil {
 				segs = append(segs, Segment{Path: vf, IsDJ: true, Text: comment})
@@ -445,10 +445,19 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		return true
 	}
 	if mode == "news" {
-		if !addNews() {
-			return nil, "", fmt.Errorf("news mode: no bulletin ready")
+		if addNews() {
+			return segs, "", nil
 		}
-		return segs, "", nil
+		// News-only mode must never become a silence loop when all fresh RSS
+		// entries have already aired. Use one music track as a safe filler and
+		// check for fresh news again on the next producer cycle.
+		if t, e := lib.Next(); e == nil {
+			log.Printf("[news] no fresh bulletin — music fallback")
+			addTrack(t)
+			*trackCount++
+			return segs, "", nil
+		}
+		return nil, "", fmt.Errorf("news mode: no bulletin and no music fallback")
 	}
 	if mode == "music" {
 		for i := 0; i < cfg.Chunk; i++ {
@@ -459,11 +468,13 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		}
 		return segs, "", nil
 	}
+
 	// News is generated from RSS text directly, with attribution. No LLM is
-	// involved in the bulletin, so an unavailable model or a hallucination can
-	// never change the reported facts.
+	// involved in the factual bulletin. The optional AI segment after it is a
+	// clearly separate DJ reaction grounded only in that RSS item.
+	didNews := false
 	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
-		_ = addNews()
+		didNews = addNews()
 	}
 
 	matched := 0
@@ -495,9 +506,9 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	// talk (intro/trivia/wiki/history/time/none), modulated by cfg.DJTalk.
 	// On any failure → random fallback so the station never stops.
 	// A local reasoning model can take longer than Icecast's initial-source
-	// window to create a full structured plan. Start an Ollama station with a
-	// music tanda immediately; later producer cycles can add short segments
-	// without risking silence at station startup.
+	// window to create a full structured plan. Ollama therefore skips the JSON
+	// planner, but still gets short plain-text DJ breaks that are cheap enough to
+	// prefetch while the current music is already on air.
 	if cfg.DJEnabled && djx != nil && !strings.EqualFold(cfg.LLMProvider, "ollama") {
 		cands := lib.Sample(12)
 		if len(cands) > 0 {
@@ -539,7 +550,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 				log.Printf("[dj] director falló (%v) — random fallback", perr)
 				for i := 0; i < cfg.Chunk; i++ {
 					if t, e := lib.Next(); e == nil {
-						if i == 0 {
+						if i == 0 && !didNews {
 							// Keep the AI DJ on air even when the structured planner
 							// rejects a plan; the music fallback remains non-blocking.
 							addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
@@ -553,6 +564,12 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	} else {
 		for i := 0; i < cfg.Chunk; i++ {
 			if t, e := lib.Next(); e == nil {
+				shouldTalk := cfg.DJEnabled && djx != nil && cfg.DJEvery > 0 && (*trackCount == 0 || *trackCount%cfg.DJEvery == 0)
+				// addNews already appended a grounded DJ reaction; avoid stacking
+				// another speech immediately before the first song after that break.
+				if shouldTalk && !(didNews && i == 0) {
+					addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
+				}
 				addTrack(t)
 				*trackCount++
 			}
@@ -570,9 +587,10 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 
 func nextTrack(segs []Segment, from int) library.Track {
 	for j := from + 1; j < len(segs); j++ {
-		if !segs[j].IsVoice {
-			return segs[j].Meta
+		if segs[j].IsVoice || segs[j].IsNews || segs[j].IsDJ {
+			continue
 		}
+		return segs[j].Meta
 	}
 	return library.Track{}
 }
