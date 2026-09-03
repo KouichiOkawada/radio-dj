@@ -17,6 +17,11 @@
   music; do not delete user music or relabel stale news as fresh.
 - Windows Icecast recovery: `9c4812e` waits after killing a dead master ffmpeg,
   allowing the reopen path to run instead of looping on Broken pipe.
+- News preloading now targets four complete READY breaks continuously. Stories
+  are reserved in memory while rendering and persisted to `news-seen.json` only
+  when their factual segment actually reaches air. Discarded mode-prefetches are
+  released. The post-news AI-DJ comment is also mixed with the configured,
+  looping news BGM before entering READY.
 
 ## 目的
 

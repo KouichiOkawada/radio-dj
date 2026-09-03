@@ -20,13 +20,17 @@ import (
 type newsPreloader struct {
 	ready   chan []Segment
 	status  *status.Server
+	queue   *news.Queue
 	enabled bool
 }
 
+const newsStockSize = 4
+
 func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, st *status.Server) *newsPreloader {
 	p := &newsPreloader{
-		ready:   make(chan []Segment, 2),
+		ready:   make(chan []Segment, newsStockSize),
 		status:  st,
+		queue:   queue,
 		enabled: vox != nil && queue != nil && len(cfg.NewsFeeds) > 0,
 	}
 	if !p.enabled {
@@ -49,8 +53,9 @@ func (p *newsPreloader) publish(state string) {
 
 func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue) {
 	for {
-		// Two complete breaks are enough to hide generation latency without
-		// allowing temporary MP3 files or already-selected stories to grow forever.
+		// Keep several complete breaks ready while music, news, or DJ commentary
+		// is on air. Four items cover normal local LLM/TTS latency without letting
+		// temporary audio or old headlines accumulate without bound.
 		if len(p.ready) >= cap(p.ready) {
 			p.publish("ready")
 			time.Sleep(2 * time.Second)
@@ -58,7 +63,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		}
 
 		p.publish("loading")
-		item, ok := queue.Next(toNewsFeeds(cfg.NewsFeeds), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
+		item, ok := queue.Reserve(toNewsFeeds(cfg.NewsFeeds), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
 		if !ok {
 			// Quiet feeds are normal. Keep music on air and poll again later.
 			p.publish("waiting")
@@ -70,6 +75,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		bulletin := strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
 		if bulletin == "" {
 			log.Printf("[news] preload skipped empty bulletin: %s", item.Title)
+			queue.Release(item)
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -77,6 +83,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		speechPath, err := vox.Speak(bulletin)
 		if err != nil {
 			log.Printf("[news] preload TTS: %v", err)
+			queue.Release(item)
 			p.publish("loading")
 			time.Sleep(5 * time.Second)
 			continue
@@ -101,7 +108,14 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 				comment = "この話題、これからどう動くのか気になりますね。続報も確認していきたいところです。"
 			}
 			if commentPath, cerr := vox.Speak(comment); cerr == nil {
-				segments = append(segments, Segment{Path: commentPath, IsDJ: true, Text: comment})
+				// Keep the same bed underneath the DJ reaction so the whole news
+				// break sounds continuous instead of dropping to dry narration.
+				commentMixed, merr := news.MixWithBed("", commentPath, cfg.NewsBGMPath, filepath.Join(cfg.StateDir, "news"), cfg.Audio.NewsBGMVolume)
+				if merr != nil {
+					log.Printf("[news] preload DJ mix: %v", merr)
+					commentMixed = commentPath
+				}
+				segments = append(segments, Segment{Path: commentMixed, IsDJ: true, Text: comment})
 			} else {
 				log.Printf("[news] preload DJ voice: %v", cerr)
 			}
@@ -110,6 +124,28 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		p.ready <- segments
 		log.Printf("[news] READY %d/%d: %s", len(p.ready), cap(p.ready), item.Title)
 		p.publish("ready")
+	}
+}
+
+// markAired persists the story only when its factual news segment actually
+// reaches the output. Rendering and queueing alone must not consume it.
+func (p *newsPreloader) markAired(seg Segment) {
+	if p == nil || p.queue == nil || seg.News == nil {
+		return
+	}
+	p.queue.MarkAired(*seg.News)
+}
+
+// releaseSegments returns any reserved story from a discarded prefetched
+// batch to the candidate pool, for example after an immediate mode switch.
+func (p *newsPreloader) releaseSegments(segments []Segment) {
+	if p == nil || p.queue == nil {
+		return
+	}
+	for _, seg := range segments {
+		if seg.IsNews && seg.News != nil {
+			p.queue.Release(*seg.News)
+		}
 	}
 }
 

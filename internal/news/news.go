@@ -74,13 +74,18 @@ type Item struct {
 // keeps a personal radio useful for hours without pretending stale backlog is
 // breaking news or going silent once every fresh URL has been heard once.
 type Queue struct {
-	path string
-	seen map[string]time.Time
-	mu   sync.Mutex
+	path     string
+	seen     map[string]time.Time
+	reserved map[string]time.Time
+	mu       sync.Mutex
 }
 
 func NewQueue(stateDir string) *Queue {
-	q := &Queue{path: filepath.Join(stateDir, "news-seen.json"), seen: map[string]time.Time{}}
+	q := &Queue{
+		path:     filepath.Join(stateDir, "news-seen.json"),
+		seen:     map[string]time.Time{},
+		reserved: map[string]time.Time{},
+	}
 	if b, err := os.ReadFile(q.path); err == nil {
 		_ = json.Unmarshal(b, &q.seen)
 	}
@@ -88,13 +93,28 @@ func NewQueue(stateDir string) *Queue {
 }
 
 func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+	item, ok := q.Reserve(feeds, maxAge)
+	if ok {
+		q.MarkAired(item)
+	}
+	return item, ok
+}
 
+// Reserve selects a story for background rendering without marking it aired.
+// A reservation prevents parallel preload slots from selecting the same item.
+// It is intentionally memory-only: after a restart, a prepared-but-never-aired
+// story remains eligible instead of being lost from the station permanently.
+func (q *Queue) Reserve(feeds []Feed, maxAge time.Duration) (Item, bool) {
+	// Network access must stay outside the queue lock. MarkAired and Release are
+	// called by the playback loop and must never wait behind slow RSS servers.
 	items := Fetch(feeds)
 	if len(items) == 0 {
 		return Item{}, false
 	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.pruneReservations()
 
 	// Six hours is the preferred "current" window. Old configs used 72h;
 	// honoring that literally made the station call yesterday's stories new.
@@ -105,14 +125,14 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 
 	// 1) Fresh unseen stories first.
 	if item, ok := q.pickUnseen(items, preferredAge); ok {
-		q.remember(item)
+		q.reserve(item)
 		return item, true
 	}
 
 	// 2) A current story may be repeated on a long-running radio, but not every
 	// cycle. This is preferable to draining an old backlog just to avoid silence.
 	if item, ok := q.pickReplay(items, preferredAge, 90*time.Minute); ok {
-		q.remember(item)
+		q.reserve(item)
 		return item, true
 	}
 
@@ -120,14 +140,14 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	// spoken script includes its actual publication time and does not say it is
 	// the latest headline.
 	if item, ok := q.pickUnseen(items, 24*time.Hour); ok {
-		q.remember(item)
+		q.reserve(item)
 		return item, true
 	}
 
 	// 4) Final radio-friendly fallback: replay a <=24h story only after a long
 	// cooldown. If even that is unavailable, caller should simply keep music on.
 	if item, ok := q.pickReplay(items, 24*time.Hour, 3*time.Hour); ok {
-		q.remember(item)
+		q.reserve(item)
 		return item, true
 	}
 	return Item{}, false
@@ -145,7 +165,11 @@ func (q *Queue) pickUnseen(items []Item, maxAge time.Duration) (Item, bool) {
 		if !fresh(item.PublishedAt, maxAge) {
 			continue
 		}
-		if _, played := q.seen[itemKey(item)]; played {
+		key := itemKey(item)
+		if _, played := q.seen[key]; played {
+			continue
+		}
+		if _, pending := q.reserved[key]; pending {
 			continue
 		}
 		return item, true
@@ -159,13 +183,47 @@ func (q *Queue) pickReplay(items []Item, maxAge, cooldown time.Duration) (Item, 
 		if !fresh(item.PublishedAt, maxAge) {
 			continue
 		}
-		last, played := q.seen[itemKey(item)]
+		key := itemKey(item)
+		if _, pending := q.reserved[key]; pending {
+			continue
+		}
+		last, played := q.seen[key]
 		if !played || now.Sub(last) < cooldown {
 			continue
 		}
 		return item, true
 	}
 	return Item{}, false
+}
+
+func (q *Queue) reserve(item Item) {
+	q.reserved[itemKey(item)] = time.Now()
+}
+
+// MarkAired commits a reserved story to persistent history when playback
+// actually reaches the news segment.
+func (q *Queue) MarkAired(item Item) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.reserved, itemKey(item))
+	q.remember(item)
+}
+
+// Release makes a prepared story selectable again when rendering fails or a
+// prefetched batch is discarded by a mode change.
+func (q *Queue) Release(item Item) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.reserved, itemKey(item))
+}
+
+func (q *Queue) pruneReservations() {
+	cutoff := time.Now().Add(-3 * time.Hour)
+	for key, reservedAt := range q.reserved {
+		if reservedAt.Before(cutoff) {
+			delete(q.reserved, key)
+		}
+	}
 }
 
 func (q *Queue) remember(item Item) {

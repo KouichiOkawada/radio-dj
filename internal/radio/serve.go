@@ -241,6 +241,7 @@ func Serve(cfg config.Config) error {
 	tandaN := 0
 	for batch := range prepared {
 		if batch.mode != modes.Get() {
+			newsPrep.releaseSegments(batch.segs)
 			continue // stale prefetch from before a mode switch
 		}
 		segs := batch.segs
@@ -253,9 +254,11 @@ func Serve(cfg config.Config) error {
 		pendingLiveTime := false
 		for i, seg := range segs {
 			if batch.mode != modes.Get() {
+				newsPrep.releaseSegments(segs[i:])
 				break // mode changed while this tanda was on air
 			}
 			if seg.IsNews {
+				newsPrep.markAired(seg)
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
 				if err := streamer.Play(seg.Path); err != nil {
