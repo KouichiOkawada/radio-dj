@@ -59,8 +59,55 @@ type Config struct {
 
 // NewsFeed is an RSS or Atom endpoint used for the attributed news bulletin.
 type NewsFeed struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Category string `json:"category,omitempty"`
+}
+
+// DefaultNewsFeeds is deliberately a diverse, account-free baseline.  A
+// persisted configuration may add private feeds, but it should never leave the
+// station dependent on one publisher whose RSS endpoint has gone stale.
+// Every endpoint below is a first-party RSS/Atom feed, except Google News,
+// which is only a supplementary regional discovery source.
+func DefaultNewsFeeds() []NewsFeed {
+	return []NewsFeed{
+		{Name: "Yahoo!ニュース 主要", URL: "https://news.yahoo.co.jp/rss/topics/top-picks.xml", Category: "general"},
+		{Name: "Yahoo!ニュース 国内", URL: "https://news.yahoo.co.jp/rss/categories/domestic.xml", Category: "general"},
+		{Name: "Yahoo!ニュース 国際", URL: "https://news.yahoo.co.jp/rss/categories/world.xml", Category: "general"},
+		{Name: "Yahoo!ニュース 経済", URL: "https://news.yahoo.co.jp/rss/categories/business.xml", Category: "finance"},
+		{Name: "Yahoo!ニュース IT", URL: "https://news.yahoo.co.jp/rss/categories/it.xml", Category: "tech"},
+		{Name: "Yahoo!ニュース 科学", URL: "https://news.yahoo.co.jp/rss/categories/science.xml", Category: "tech"},
+		{Name: "ITmedia AI+", URL: "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml", Category: "tech"},
+		{Name: "ITmedia NEWS", URL: "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", Category: "tech"},
+		{Name: "札幌市 報道発表", URL: "https://www.city.sapporo.jp/somu/koho/hodo/houdou.xml", Category: "hokkaido"},
+		{Name: "札幌市 新着", URL: "https://www.city.sapporo.jp/new/shinchaku.xml", Category: "hokkaido"},
+		{Name: "Google News 北海道（補助）", URL: "https://news.google.com/rss/search?q=%E5%8C%97%E6%B5%B7%E9%81%93&hl=ja&gl=JP&ceid=JP:ja", Category: "hokkaido"},
+	}
+}
+
+// MergeNewsFeeds keeps the user's feeds and fills in the maintained baseline.
+// It is URL-deduplicated so legacy configs remain compatible and no feed is
+// fetched twice.  This also lets an old, stale configured feed fail without
+// starving the rest of the news engine.
+func MergeNewsFeeds(configured []NewsFeed) []NewsFeed {
+	seen := make(map[string]bool, len(configured))
+	out := make([]NewsFeed, 0, len(configured)+len(DefaultNewsFeeds()))
+	for _, feed := range configured {
+		feed.URL = strings.TrimSpace(feed.URL)
+		if feed.URL == "" || seen[feed.URL] {
+			continue
+		}
+		seen[feed.URL] = true
+		out = append(out, feed)
+	}
+	for _, feed := range DefaultNewsFeeds() {
+		if seen[feed.URL] {
+			continue
+		}
+		seen[feed.URL] = true
+		out = append(out, feed)
+	}
+	return out
 }
 
 // AudioSettings are persisted in config.json and constrained to linear gain
@@ -151,7 +198,7 @@ func Load() Config {
 		VoiceCmd:        firstNonEmpty(os.Getenv("RDJ_VOICE_CMD"), f.VoiceCmd),
 		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
 		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
-		NewsFeeds:       f.NewsFeeds,
+		NewsFeeds:       MergeNewsFeeds(f.NewsFeeds),
 		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 6),
 		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
 		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),

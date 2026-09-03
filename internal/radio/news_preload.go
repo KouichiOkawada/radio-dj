@@ -21,17 +21,19 @@ type newsPreloader struct {
 	ready   chan []Segment
 	status  *status.Server
 	queue   *news.Queue
+	store   *news.Store
 	enabled bool
 }
 
 const newsStockSize = 4
 
-func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, st *status.Server) *newsPreloader {
+func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, st *status.Server) *newsPreloader {
 	p := &newsPreloader{
 		ready:   make(chan []Segment, newsStockSize),
 		status:  st,
 		queue:   queue,
-		enabled: vox != nil && queue != nil && len(cfg.NewsFeeds) > 0,
+		store:   store,
+		enabled: vox != nil && queue != nil && store != nil && len(cfg.NewsFeeds) > 0,
 	}
 	if !p.enabled {
 		st.SetNewsReadiness(false, 0, "unavailable")
@@ -39,7 +41,7 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 	}
 
 	st.SetNewsReadiness(false, 0, "loading")
-	go p.run(cfg, djx, vox, queue)
+	go p.run(cfg, djx, vox, queue, store)
 	return p
 }
 
@@ -51,7 +53,7 @@ func (p *newsPreloader) publish(state string) {
 	p.status.SetNewsReadiness(count > 0, count, state)
 }
 
-func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue) {
+func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store) {
 	for {
 		// Keep several complete breaks ready while music, news, or DJ commentary
 		// is on air. Four items cover normal local LLM/TTS latency without letting
@@ -63,7 +65,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		}
 
 		p.publish("loading")
-		item, ok := queue.Reserve(toNewsFeeds(cfg.NewsFeeds), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
+		item, ok := queue.ReserveItems(store.Snapshot(), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
 		if !ok {
 			// Quiet feeds are normal. Keep music on air and poll again later.
 			p.publish("waiting")

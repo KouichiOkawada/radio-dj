@@ -9,6 +9,7 @@ package radio
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,11 +40,12 @@ type Segment struct {
 	IsNews   bool
 	IsDJ     bool
 	News     *news.Item
-	LiveTime bool          // voice generated at air-time (clock skill) — no pre-baked Path
-	Midroll  bool          // voice fires mid-song (~50%), not at the start
-	Meta     library.Track // valid when !IsVoice
-	Text     string        // DJ speech text — logged at air-time, not build-time
-	Req      string        // request text that matched this track — air-time log
+	Program  *news.ProgramSlot // non-nil for the scheduled slot this bulletin fulfils
+	LiveTime bool              // voice generated at air-time (clock skill) — no pre-baked Path
+	Midroll  bool              // voice fires mid-song (~50%), not at the start
+	Meta     library.Track     // valid when !IsVoice
+	Text     string            // DJ speech text — logged at air-time, not build-time
+	Req      string            // request text that matched this track — air-time log
 }
 
 type preparedTanda struct {
@@ -101,6 +103,9 @@ func Serve(cfg config.Config) error {
 	st.SetLanguage(cfg.Language)
 	modes := newPlaybackMode(cfg.PlayMode)
 	newsQueue := news.NewQueue(cfg.StateDir)
+	newsStore := news.NewStore()
+	collectorCtx, stopCollectors := context.WithCancel(context.Background())
+	defer stopCollectors()
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
 	log.Printf("[radio-dj] UI :%d · stream :%d/stream.aac · POST /request", cfg.StatusPort, cfg.IcecastPort)
@@ -125,7 +130,9 @@ func Serve(cfg config.Config) error {
 	// News rendering is its own background pipeline. It fills a tiny queue of
 	// complete audio breaks while music is already available, so mode switches
 	// and track starts never wait on RSS, OGP, Ollama, edge-tts, or ffmpeg.
-	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, st)
+	news.StartCollectors(collectorCtx, newsStore, toNewsFeeds(cfg.NewsFeeds))
+	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, st)
+	programClock := news.NewProgramClock()
 
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
@@ -225,7 +232,7 @@ func Serve(cfg config.Config) error {
 		tc := 0
 		for {
 			mode := modes.Get()
-			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, &tc)
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, programClock, &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
 				time.Sleep(10 * time.Second)
@@ -259,6 +266,9 @@ func Serve(cfg config.Config) error {
 			}
 			if seg.IsNews {
 				newsPrep.markAired(seg)
+				if seg.Program != nil {
+					programClock.MarkAired(*seg.Program)
+				}
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
 				if err := streamer.Play(seg.Path); err != nil {
@@ -405,7 +415,7 @@ func Serve(cfg config.Config) error {
 // buildTanda returns the ordered segments for one batch (requested songs
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
-func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsPrep *newsPreloader, trackCount *int) (segs []Segment, reqs string, err error) {
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsPrep *newsPreloader, programClock *news.ProgramClock, trackCount *int) (segs []Segment, reqs string, err error) {
 	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
@@ -420,16 +430,24 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	addTrack := func(t library.Track) {
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
-	addNews := func() bool {
+	addNews := func(slot *news.ProgramSlot) bool {
 		prepared, ok := newsPrep.tryTake()
 		if !ok {
 			return false
+		}
+		if slot != nil {
+			for i := range prepared {
+				if prepared[i].IsNews {
+					prepared[i].Program = slot
+					break
+				}
+			}
 		}
 		segs = append(segs, prepared...)
 		return true
 	}
 	if mode == "news" {
-		if addNews() {
+		if addNews(nil) {
 			return segs, "", nil
 		}
 		// News-only mode must never become a silence loop when the background
@@ -453,12 +471,14 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		return segs, "", nil
 	}
 
-	// The factual bulletin is already rendered by newsPreloader. This cadence
-	// check only decides whether a READY break is inserted at this boundary; it
-	// never performs network/LLM/TTS work on the playback producer path.
+	// The factual bulletin is already rendered by newsPreloader. The programme
+	// clock only decides whether a READY break is inserted at this natural song
+	// boundary; it never performs HTTP/LLM/TTS work on the playback path.
 	didNews := false
-	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
-		didNews = addNews()
+	if cfg.DJEnabled && len(cfg.NewsFeeds) > 0 {
+		if slot, due := programClock.Due(time.Now()); due {
+			didNews = addNews(&slot)
+		}
 	}
 
 	matched := 0
@@ -618,7 +638,7 @@ func libCands(ts []library.Track) []dj.Cand {
 func toNewsFeeds(feeds []config.NewsFeed) []news.Feed {
 	out := make([]news.Feed, len(feeds))
 	for i, f := range feeds {
-		out[i] = news.Feed{Name: f.Name, URL: f.URL}
+		out[i] = news.Feed{Name: f.Name, URL: f.URL, Category: f.Category}
 	}
 	return out
 }

@@ -19,3 +19,24 @@ func TestNeedsSetupAllowsSavedMusicOnlyConfig(t *testing.T) {
 		t.Fatal("saved music-only config should open the player")
 	}
 }
+
+func TestMergeNewsFeedsKeepsConfiguredAndAddsDiverseDefaults(t *testing.T) {
+	custom := NewsFeed{Name: "custom", URL: "https://example.test/feed", Category: "general"}
+	feeds := MergeNewsFeeds([]NewsFeed{custom, custom})
+	seen := map[string]bool{}
+	for _, feed := range feeds {
+		if seen[feed.URL] {
+			t.Fatalf("duplicate feed %q", feed.URL)
+		}
+		seen[feed.URL] = true
+	}
+	if !seen[custom.URL] {
+		t.Fatal("configured feed was lost")
+	}
+	if !seen["https://news.yahoo.co.jp/rss/categories/business.xml"] {
+		t.Fatal("Yahoo business baseline feed missing")
+	}
+	if !seen["https://rss.itmedia.co.jp/rss/2.0/aiplus.xml"] {
+		t.Fatal("ITmedia AI baseline feed missing")
+	}
+}

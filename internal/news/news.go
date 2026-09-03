@@ -21,8 +21,9 @@ import (
 )
 
 type Feed struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Category string `json:"category,omitempty"`
 }
 
 // MixWithBed creates a complete news segment. The bed is enhancement only:
@@ -61,6 +62,7 @@ func MixWithBed(ffmpeg, speechPath, bedPath, outDir string, volume float64) (str
 
 type Item struct {
 	Source      string
+	Category    string
 	Title       string
 	Description string
 	URL         string
@@ -107,7 +109,12 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 func (q *Queue) Reserve(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	// Network access must stay outside the queue lock. MarkAired and Release are
 	// called by the playback loop and must never wait behind slow RSS servers.
-	items := Fetch(feeds)
+	return q.ReserveItems(Fetch(feeds), maxAge)
+}
+
+// ReserveItems selects from an already-collected snapshot. It is used by the
+// background news engine so programme preparation never waits for RSS.
+func (q *Queue) ReserveItems(items []Item, maxAge time.Duration) (Item, bool) {
 	if len(items) == 0 {
 		return Item{}, false
 	}
@@ -380,7 +387,7 @@ func Fetch(feeds []Feed) []Item {
 			if url == "" {
 				url = clean(e.Link.Href)
 			}
-			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: url, PublishedAt: published, ImageURL: image})
+			out = append(out, Item{Source: feed.Name, Category: feed.Category, Title: title, Description: truncate(desc, 180), URL: url, PublishedAt: published, ImageURL: image})
 			added++
 			// Keep one high-volume feed from consuming unbounded work while still
 			// taking enough candidates to find the globally freshest entry.
@@ -390,6 +397,11 @@ func Fetch(feeds []Feed) []Item {
 		}
 	}
 
+	sortItemsNewest(out)
+	return out
+}
+
+func sortItemsNewest(out []Item) {
 	sort.SliceStable(out, func(i, j int) bool {
 		a, aok := parsePublished(out[i].PublishedAt)
 		b, bok := parsePublished(out[j].PublishedAt)
@@ -404,7 +416,6 @@ func Fetch(feeds []Feed) []Item {
 			return false
 		}
 	})
-	return out
 }
 
 var imageCache = struct {
