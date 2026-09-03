@@ -160,6 +160,25 @@ func (d *DJ) NewsCommentary(source, title, description, marketContext string) st
 	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 1200))
 }
 
+// NewsBriefComment is the scheduled-radio reaction after a bulletin. It keeps
+// the host present without turning every hourly news break into another long
+// programme, and may relate verified J-Quants context without claiming a
+// causal connection to the article.
+func (d *DJ) NewsBriefComment(source, title, description, marketContext string) string {
+	prompt := "いま読み上げたニュースについて、日本語のラジオDJとして15〜30秒、100〜180文字で短く話してください。" +
+		"ニュースの復唱ではなく、聞き手が注目するとよい観点か、あなた自身の率直で穏やかな私見を一つだけ述べてください。" +
+		"下にない事実、数字、原因、人物の発言は追加しないでください。次の曲や番組内容も予告しないでください。箇条書きは禁止です。\n" +
+		"出典: " + source + "\n見出し: " + title
+	if strings.TrimSpace(description) != "" {
+		prompt += "\nRSS概要: " + description
+	}
+	if strings.TrimSpace(marketContext) != "" {
+		prompt += "\nJ-Quantsで確認した情報（ニュースとの因果関係は断定しないこと。値の単位を推測せず、開示日を添えること）:\n" + marketContext +
+			"\nこの情報から最低1銘柄に触れ、ニュースとの共通点または相違点を私見として短く述べてください。"
+	}
+	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 260))
+}
+
 // SaySearch runs a completion WITH web search enabled (GLM's web_search tool),
 // for live facts. Used by SayWiki.
 func (d *DJ) SaySearch(user string) string {

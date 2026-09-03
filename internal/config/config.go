@@ -29,26 +29,28 @@ type Config struct {
 	Bitrate         int
 	Chunk           int
 
-	DJEnabled       bool
-	DJEvery         int    // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
-	DJTalk          string // poco | regular | mucho | verboso — how chatty the director is
-	GLMBaseURL      string
-	GLMAPIKey       string
-	GLMModel        string
-	LLMProvider     string // preset name (glm/openai/openrouter/...)
-	VoiceProvider   string // edge-tts | piper | say
-	Voice           string // voice id for the provider
-	VoiceCmd        string // raw override (power users); empty = use provider+voice
-	Bed             string
-	NewsEvery       int
-	NewsFeeds       []NewsFeed
-	NewsMaxAgeHours int
-	NewsBGMPath     string
-	NewsBGMVolume   float64
-	JQuantsAPIKey   string
-	WatchSymbols    []string
-	Audio           AudioSettings
-	PlayMode        string
+	DJEnabled        bool
+	DJEvery          int    // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
+	DJTalk           string // poco | regular | mucho | verboso — how chatty the director is
+	GLMBaseURL       string
+	GLMAPIKey        string
+	GLMModel         string
+	LLMProvider      string // preset name (glm/openai/openrouter/...)
+	VoiceProvider    string // edge-tts | piper | say
+	Voice            string // voice id for the provider
+	VoiceCmd         string // raw override (power users); empty = use provider+voice
+	Bed              string
+	NewsEvery        int
+	NewsFeeds        []NewsFeed
+	NewsMaxAgeHours  int
+	NewsBGMPath      string
+	NewsBGMVolume    float64
+	JQuantsAPIKey    string
+	WatchSymbols     []string
+	Audio            AudioSettings
+	PlayMode         string
+	AutoMusicEnabled bool
+	AutoMusicTempDir string
 
 	LocationName string
 	Latitude     float64
@@ -123,37 +125,39 @@ type AudioSettings struct {
 
 // fileConfig is the onboarding-persisted shape (user-settable fields only).
 type fileConfig struct {
-	Library         string        `json:"library,omitempty"`
-	Source          string        `json:"source,omitempty"`
-	NavidromeURL    string        `json:"navidrome_url,omitempty"`
-	NavidromeUser   string        `json:"navidrome_user,omitempty"`
-	NavidromePass   string        `json:"navidrome_pass,omitempty"`
-	GLMAPIKey       string        `json:"glm_api_key,omitempty"`
-	GLMBaseURL      string        `json:"glm_base_url,omitempty"`
-	GLMModel        string        `json:"glm_model,omitempty"`
-	LLMProvider     string        `json:"llm_provider,omitempty"`
-	VoiceProvider   string        `json:"voice_provider,omitempty"`
-	Voice           string        `json:"voice,omitempty"`
-	VoiceCmd        string        `json:"voice_cmd,omitempty"`
-	Location        string        `json:"location,omitempty"`
-	Latitude        float64       `json:"lat,omitempty"`
-	Longitude       float64       `json:"lon,omitempty"`
-	Language        string        `json:"language,omitempty"`
-	DJEvery         int           `json:"dj_every,omitempty"`
-	DJTalk          string        `json:"dj_talk,omitempty"`
-	Chunk           int           `json:"chunk,omitempty"`
-	Bitrate         int           `json:"bitrate,omitempty"`
-	StationName     string        `json:"station_name,omitempty"`
-	Bed             string        `json:"bed,omitempty"`
-	NewsEvery       int           `json:"news_every,omitempty"`
-	NewsFeeds       []NewsFeed    `json:"news_feeds,omitempty"`
-	NewsMaxAgeHours int           `json:"news_max_age_hours,omitempty"`
-	NewsBGMPath     string        `json:"news_bgm_path,omitempty"`
-	NewsBGMVolume   float64       `json:"news_bgm_volume,omitempty"`
-	JQuantsAPIKey   string        `json:"jquants_api_key,omitempty"`
-	WatchSymbols    []string      `json:"watch_symbols,omitempty"`
-	Audio           AudioSettings `json:"audio,omitempty"`
-	PlayMode        string        `json:"play_mode,omitempty"`
+	Library          string        `json:"library,omitempty"`
+	Source           string        `json:"source,omitempty"`
+	NavidromeURL     string        `json:"navidrome_url,omitempty"`
+	NavidromeUser    string        `json:"navidrome_user,omitempty"`
+	NavidromePass    string        `json:"navidrome_pass,omitempty"`
+	GLMAPIKey        string        `json:"glm_api_key,omitempty"`
+	GLMBaseURL       string        `json:"glm_base_url,omitempty"`
+	GLMModel         string        `json:"glm_model,omitempty"`
+	LLMProvider      string        `json:"llm_provider,omitempty"`
+	VoiceProvider    string        `json:"voice_provider,omitempty"`
+	Voice            string        `json:"voice,omitempty"`
+	VoiceCmd         string        `json:"voice_cmd,omitempty"`
+	Location         string        `json:"location,omitempty"`
+	Latitude         float64       `json:"lat,omitempty"`
+	Longitude        float64       `json:"lon,omitempty"`
+	Language         string        `json:"language,omitempty"`
+	DJEvery          int           `json:"dj_every,omitempty"`
+	DJTalk           string        `json:"dj_talk,omitempty"`
+	Chunk            int           `json:"chunk,omitempty"`
+	Bitrate          int           `json:"bitrate,omitempty"`
+	StationName      string        `json:"station_name,omitempty"`
+	Bed              string        `json:"bed,omitempty"`
+	NewsEvery        int           `json:"news_every,omitempty"`
+	NewsFeeds        []NewsFeed    `json:"news_feeds,omitempty"`
+	NewsMaxAgeHours  int           `json:"news_max_age_hours,omitempty"`
+	NewsBGMPath      string        `json:"news_bgm_path,omitempty"`
+	NewsBGMVolume    float64       `json:"news_bgm_volume,omitempty"`
+	JQuantsAPIKey    string        `json:"jquants_api_key,omitempty"`
+	WatchSymbols     []string      `json:"watch_symbols,omitempty"`
+	Audio            AudioSettings `json:"audio,omitempty"`
+	PlayMode         string        `json:"play_mode,omitempty"`
+	AutoMusicEnabled *bool         `json:"auto_music_enabled,omitempty"`
+	AutoMusicTempDir string        `json:"auto_music_temp_dir,omitempty"`
 }
 
 // normalizeTalk canonicalizes the talkiness dial to English keys, accepting
@@ -178,44 +182,46 @@ func Load() Config {
 	enc := codec.Resolve()
 	mount := getenv("RDJ_ICECAST_MOUNT", "/stream"+codec.MetaFor(enc).Suffix)
 	c := Config{
-		Source:          pick("RDJ_SOURCE", f.Source, "folder"),
-		Library:         pick("RDJ_LIBRARY", f.Library, os.Getenv("HOME")+"/Music/library"),
-		NavidromeURL:    pick("RDJ_NAVIDROME_URL", f.NavidromeURL, "http://localhost:4533"),
-		NavidromeUser:   pickEnvOrFile("RDJ_NAVIDROME_USER", f.NavidromeUser),
-		NavidromePass:   pickEnvOrFile("RDJ_NAVIDROME_PASS", f.NavidromePass),
-		IcecastHost:     getenv("RDJ_ICECAST_HOST", "localhost"),
-		IcecastPort:     getint("RDJ_ICECAST_PORT", 7702),
-		IcecastSourcePW: os.Getenv("RDJ_ICECAST_SOURCE_PW"),
-		IcecastMount:    mount,
-		Encoder:         enc,
-		StationName:     pick("RDJ_STATION_NAME", f.StationName, "radio-dj"),
-		Bitrate:         pickInt("RDJ_BITRATE", f.Bitrate, 192),
-		Chunk:           pickInt("RDJ_CHUNK", f.Chunk, 8),
-		DJEvery:         pickInt("RDJ_DJ_EVERY", f.DJEvery, 3),
-		DJTalk:          normalizeTalk(pick("RDJ_DJ_TALK", f.DJTalk, "regular")),
-		GLMBaseURL:      pick("RDJ_GLM_BASE_URL", f.GLMBaseURL, "https://api.z.ai/api/coding/paas/v4"),
-		GLMAPIKey:       firstNonEmpty(os.Getenv("RDJ_GLM_API_KEY"), f.GLMAPIKey, os.Getenv("ZAI_API_KEY")),
-		GLMModel:        pick("RDJ_GLM_MODEL", f.GLMModel, "glm-5.2"),
-		LLMProvider:     pick("RDJ_LLM_PROVIDER", f.LLMProvider, "glm"),
-		VoiceProvider:   pick("RDJ_VOICE_PROVIDER", f.VoiceProvider, ""),
-		Voice:           pick("RDJ_VOICE", f.Voice, ""),
-		VoiceCmd:        firstNonEmpty(os.Getenv("RDJ_VOICE_CMD"), f.VoiceCmd),
-		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
-		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
-		NewsFeeds:       MergeNewsFeeds(f.NewsFeeds),
-		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 6),
-		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
-		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
-		JQuantsAPIKey:   firstNonEmpty(os.Getenv("JQUANTS_API_KEY"), f.JQuantsAPIKey),
-		WatchSymbols:    append([]string(nil), f.WatchSymbols...),
-		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
-		PlayMode:        normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
-		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
-		Latitude:        pickFloat("RDJ_LAT", f.Latitude, -16.5),
-		Longitude:       pickFloat("RDJ_LON", f.Longitude, -68.15),
-		Language:        pick("RDJ_LANGUAGE", f.Language, "es"),
-		StatusPort:      getint("RDJ_STATUS_PORT", 7710),
-		StateDir:        getenv("RDJ_STATE_DIR", dir),
+		Source:           pick("RDJ_SOURCE", f.Source, "folder"),
+		Library:          pick("RDJ_LIBRARY", f.Library, os.Getenv("HOME")+"/Music/library"),
+		NavidromeURL:     pick("RDJ_NAVIDROME_URL", f.NavidromeURL, "http://localhost:4533"),
+		NavidromeUser:    pickEnvOrFile("RDJ_NAVIDROME_USER", f.NavidromeUser),
+		NavidromePass:    pickEnvOrFile("RDJ_NAVIDROME_PASS", f.NavidromePass),
+		IcecastHost:      getenv("RDJ_ICECAST_HOST", "localhost"),
+		IcecastPort:      getint("RDJ_ICECAST_PORT", 7702),
+		IcecastSourcePW:  os.Getenv("RDJ_ICECAST_SOURCE_PW"),
+		IcecastMount:     mount,
+		Encoder:          enc,
+		StationName:      pick("RDJ_STATION_NAME", f.StationName, "radio-dj"),
+		Bitrate:          pickInt("RDJ_BITRATE", f.Bitrate, 192),
+		Chunk:            pickInt("RDJ_CHUNK", f.Chunk, 8),
+		DJEvery:          pickInt("RDJ_DJ_EVERY", f.DJEvery, 3),
+		DJTalk:           normalizeTalk(pick("RDJ_DJ_TALK", f.DJTalk, "regular")),
+		GLMBaseURL:       pick("RDJ_GLM_BASE_URL", f.GLMBaseURL, "https://api.z.ai/api/coding/paas/v4"),
+		GLMAPIKey:        firstNonEmpty(os.Getenv("RDJ_GLM_API_KEY"), f.GLMAPIKey, os.Getenv("ZAI_API_KEY")),
+		GLMModel:         pick("RDJ_GLM_MODEL", f.GLMModel, "glm-5.2"),
+		LLMProvider:      pick("RDJ_LLM_PROVIDER", f.LLMProvider, "glm"),
+		VoiceProvider:    pick("RDJ_VOICE_PROVIDER", f.VoiceProvider, ""),
+		Voice:            pick("RDJ_VOICE", f.Voice, ""),
+		VoiceCmd:         firstNonEmpty(os.Getenv("RDJ_VOICE_CMD"), f.VoiceCmd),
+		Bed:              firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
+		NewsEvery:        pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
+		NewsFeeds:        MergeNewsFeeds(f.NewsFeeds),
+		NewsMaxAgeHours:  pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 6),
+		NewsBGMPath:      pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
+		NewsBGMVolume:    pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
+		JQuantsAPIKey:    firstNonEmpty(os.Getenv("JQUANTS_API_KEY"), f.JQuantsAPIKey),
+		WatchSymbols:     append([]string(nil), f.WatchSymbols...),
+		Audio:            normalizeAudio(f.Audio, f.NewsBGMVolume),
+		PlayMode:         normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
+		AutoMusicEnabled: pickOptionalBool("RDJ_AUTO_MUSIC", f.AutoMusicEnabled, true),
+		AutoMusicTempDir: pick("RDJ_AUTO_MUSIC_TEMP_DIR", f.AutoMusicTempDir, filepath.Join(pick("RDJ_LIBRARY", f.Library, os.Getenv("HOME")+"/Music/library"), "temporary")),
+		LocationName:     pick("RDJ_LOCATION", f.Location, "La Paz"),
+		Latitude:         pickFloat("RDJ_LAT", f.Latitude, -16.5),
+		Longitude:        pickFloat("RDJ_LON", f.Longitude, -68.15),
+		Language:         pick("RDJ_LANGUAGE", f.Language, "es"),
+		StatusPort:       getint("RDJ_STATUS_PORT", 7710),
+		StateDir:         getenv("RDJ_STATE_DIR", dir),
 	}
 
 	// Ollama deliberately skips the heavyweight structured director. In radio
@@ -232,6 +238,18 @@ func Load() Config {
 	llmReady := c.GLMAPIKey != "" || strings.EqualFold(c.LLMProvider, "ollama")
 	c.DJEnabled = llmReady && (c.VoiceCmd != "" || c.VoiceProvider != "")
 	return c
+}
+
+func pickOptionalBool(envKey string, fileVal *bool, def bool) bool {
+	if value := strings.TrimSpace(os.Getenv(envKey)); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			return parsed
+		}
+	}
+	if fileVal != nil {
+		return *fileVal
+	}
+	return def
 }
 
 func normalizePlayMode(mode string) string {

@@ -32,3 +32,22 @@ func TestProgramClockDue(t *testing.T) {
 		}
 	}
 }
+
+func TestProgramClockNextIncludesMarketSpecials(t *testing.T) {
+	for _, tc := range []struct {
+		at   time.Time
+		kind ProgramKind
+		hour int
+		min  int
+	}{
+		{jst(2026, time.September, 3, 8, 44), ProgramMorningMarket, 8, 45},
+		{jst(2026, time.September, 3, 8, 46), ProgramFull, 9, 0},
+		{jst(2026, time.September, 3, 15, 39), ProgramTokyoClose, 15, 40},
+		{jst(2026, time.September, 3, 23, 31), ProgramFull, 0, 0},
+	} {
+		slot := NewProgramClock().Next(tc.at)
+		if slot.Kind != tc.kind || slot.At.Hour() != tc.hour || slot.At.Minute() != tc.min {
+			t.Fatalf("Next(%s) = %#v; want %s at %02d:%02d", tc.at, slot, tc.kind, tc.hour, tc.min)
+		}
+	}
+}

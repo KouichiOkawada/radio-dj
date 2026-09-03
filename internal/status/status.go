@@ -23,20 +23,23 @@ import (
 
 // Track is the on-air shape clients consume (Src is internal-only, never serialized).
 type Track struct {
-	Type        string  `json:"type,omitempty"` // music | dj | news
-	Title       string  `json:"title"`
-	Artist      string  `json:"artist"`
-	Album       string  `json:"album,omitempty"`
-	Year        string  `json:"year,omitempty"`
-	BPM         string  `json:"bpm,omitempty"`
-	Duration    float64 `json:"duration,omitempty"` // seconds (folder source only)
-	Src         string  `json:"-"`                  // internal: source path for cover art
-	Source      string  `json:"source,omitempty"`
-	URL         string  `json:"url,omitempty"`
-	Description string  `json:"description,omitempty"`
-	PublishedAt string  `json:"published_at,omitempty"`
-	ImageURL    string  `json:"image_url,omitempty"`
-	SpeechText  string  `json:"speech_text,omitempty"`
+	Type           string  `json:"type,omitempty"` // music | dj | news
+	Title          string  `json:"title"`
+	Artist         string  `json:"artist"`
+	Album          string  `json:"album,omitempty"`
+	Year           string  `json:"year,omitempty"`
+	BPM            string  `json:"bpm,omitempty"`
+	Duration       float64 `json:"duration,omitempty"` // seconds (folder source only)
+	Src            string  `json:"-"`                  // internal: source path for cover art
+	AttributionURL string  `json:"attribution_url,omitempty"`
+	LicenseURL     string  `json:"license_url,omitempty"`
+	Source         string  `json:"source,omitempty"`
+	Category       string  `json:"category,omitempty"`
+	URL            string  `json:"url,omitempty"`
+	Description    string  `json:"description,omitempty"`
+	PublishedAt    string  `json:"published_at,omitempty"`
+	ImageURL       string  `json:"image_url,omitempty"`
+	SpeechText     string  `json:"speech_text,omitempty"`
 }
 
 type Request struct {
@@ -60,20 +63,24 @@ type NowPlaying struct {
 	NewsReadyCount int       `json:"news_ready_count"`
 	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | unavailable
 	NewsPreview    *Track    `json:"news_preview,omitempty"`
+	NewsPriority   string    `json:"news_priority,omitempty"`
+	NextNewsKind   string    `json:"next_news_kind,omitempty"`
+	NextNewsAt     string    `json:"next_news_at,omitempty"`
 }
 
 type Server struct {
-	mu             sync.RWMutex
-	cur            NowPlaying
-	history        []Track // recently played, newest first
-	dir            string
-	requests       []Request // raw, unresolved
-	needsSetup     bool
-	controlHandler func(string) bool // radio-loop skip callback (POST /control); nil = no radio
-	modeHandler    func(string) bool
-	mode           string
-	lang           string // config.Language ("es"|"en") — drives the index UI strings
-	mount          string // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
+	mu                  sync.RWMutex
+	cur                 NowPlaying
+	history             []Track // recently played, newest first
+	dir                 string
+	requests            []Request // raw, unresolved
+	needsSetup          bool
+	controlHandler      func(string) bool // radio-loop skip callback (POST /control); nil = no radio
+	modeHandler         func(string) bool
+	newsPriorityHandler func(string) bool
+	mode                string
+	lang                string // config.Language ("es"|"en") — drives the index UI strings
+	mount               string // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
 	// icecast admin API for listener counts (lazy, cached 3s)
 	icBase      string
 	icPw        string
@@ -115,6 +122,41 @@ func (s *Server) SetModeHandler(mode string, h func(string) bool) {
 	s.mode = mode
 	s.modeHandler = h
 	s.mu.Unlock()
+}
+
+func (s *Server) SetNewsPriorityHandler(h func(string) bool) {
+	s.mu.Lock()
+	s.newsPriorityHandler = h
+	s.mu.Unlock()
+}
+
+func (s *Server) SetNextNewsSlot(kind string, at time.Time) {
+	if s == nil || at.IsZero() {
+		return
+	}
+	atText := at.Format(time.RFC3339)
+	s.mu.Lock()
+	changed := s.cur.NextNewsKind != kind || s.cur.NextNewsAt != atText
+	s.cur.NextNewsKind = kind
+	s.cur.NextNewsAt = atText
+	s.mu.Unlock()
+	if changed {
+		go s.broadcast()
+	}
+}
+
+func (s *Server) setNewsPriority(category string) bool {
+	s.mu.RLock()
+	h := s.newsPriorityHandler
+	s.mu.RUnlock()
+	if h == nil || !h(category) {
+		return false
+	}
+	s.mu.Lock()
+	s.cur.NewsPriority = category
+	s.mu.Unlock()
+	go s.broadcast()
+	return true
 }
 
 func (s *Server) setMode(mode string) bool {
@@ -463,6 +505,25 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"mode": body.Mode})
+	})
+	mux.HandleFunc("/news-priority", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(map[string]string{"category": s.Current().NewsPriority})
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.Error(w, "GET or PUT only", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Category string `json:"category"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || !s.setNewsPriority(body.Category) {
+			http.Error(w, `{"error":"category must be finance, general, hokkaido, tech, or empty"}`, http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"category": body.Category})
 	})
 	mux.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {

@@ -111,6 +111,12 @@ func (c *ProgramClock) Next(now time.Time) ProgramSlot {
 		if candidate.Before(now) {
 			continue
 		}
+		if candidate.Hour() == 8 && candidate.Minute() == 45 {
+			return ProgramSlot{Kind: ProgramMorningMarket, At: candidate}
+		}
+		if candidate.Hour() == 15 && candidate.Minute() == 40 {
+			return ProgramSlot{Kind: ProgramTokyoClose, At: candidate}
+		}
 		if candidate.Minute() == 0 || (candidate.Minute() == 30 && candidate.Hour() >= 6) {
 			return ProgramSlot{Kind: map[bool]ProgramKind{true: ProgramFull, false: ProgramFlash}[candidate.Minute() == 0], At: candidate}
 		}

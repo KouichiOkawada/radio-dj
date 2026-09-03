@@ -21,12 +21,14 @@ import (
 )
 
 type Track struct {
-	Src    string `json:"src"`    // file path or http URL — fed to ffmpeg -i
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-	Album  string `json:"album,omitempty"`
-	Year   string `json:"year,omitempty"`
-	BPM    string `json:"bpm,omitempty"`
+	Src            string `json:"src"` // file path or http URL — fed to ffmpeg -i
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album,omitempty"`
+	Year           string `json:"year,omitempty"`
+	BPM            string `json:"bpm,omitempty"`
+	AttributionURL string `json:"attribution_url,omitempty"`
+	LicenseURL     string `json:"license_url,omitempty"`
 }
 
 type Library interface {
@@ -55,11 +57,12 @@ func New(source, folder, ndURL, ndUser, ndPass string) (Library, error) {
 // ---------- folder ----------
 
 type folder struct {
-	root   string
-	files  []string
-	played map[string]bool
-	mu     sync.Mutex
-	cursor int
+	root     string
+	files    []string
+	played   map[string]bool
+	mu       sync.Mutex
+	cursor   int
+	lastScan time.Time
 }
 
 func newFolder(root string) (*folder, error) {
@@ -72,12 +75,16 @@ func newFolder(root string) (*folder, error) {
 		return nil, fmt.Errorf("no audio files under %s", root)
 	}
 	rand.Shuffle(len(files), func(i, j int) { files[i], files[j] = files[j], files[i] })
-	return &folder{root: root, files: files, played: map[string]bool{}}, nil
+	return &folder{root: root, files: files, played: map[string]bool{}, lastScan: time.Now()}, nil
 }
 
 func (f *folder) Next() (Track, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.refreshLocked()
+	if len(f.files) == 0 {
+		return Track{}, fmt.Errorf("no audio files under %s", f.root)
+	}
 	if len(f.played) >= len(f.files) {
 		f.played = map[string]bool{} // every track played once → reset, reshuffle
 		rand.Shuffle(len(f.files), func(i, j int) { files := f.files; files[i], files[j] = files[j], files[i] })
@@ -88,20 +95,16 @@ func (f *folder) Next() (Track, error) {
 		if f.played[p] {
 			continue
 		}
+		if _, err := os.Stat(p); err != nil {
+			delete(f.played, p)
+			continue
+		}
 		f.played[p] = true
-		m := probe(p)
-		return Track{
-			Src: p,
-			Title:  fallback(m.Title, stripExt(filepath.Base(p))),
-			Artist: fallback(m.Artist, parentDir(p, f.root)),
-			Album:  m.Album,
-			Year:   m.Year,
-			BPM:    m.BPM,
-		}, nil
+		return f.track(p), nil
 	}
 	// shouldn't reach here, but stay alive
 	f.played = map[string]bool{}
-	return f.Next()
+	return Track{}, fmt.Errorf("no readable unplayed audio files under %s", f.root)
 }
 
 // Sample peeks up to n unplayed tracks without committing them. The director
@@ -110,6 +113,7 @@ func (f *folder) Next() (Track, error) {
 func (f *folder) Sample(n int) []Track {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.refreshLocked()
 	if len(f.played) >= len(f.files) {
 		f.played = map[string]bool{}
 		rand.Shuffle(len(f.files), func(i, j int) { f.files[i], f.files[j] = f.files[j], f.files[i] })
@@ -119,15 +123,10 @@ func (f *folder) Sample(n int) []Track {
 		if f.played[p] {
 			continue
 		}
-		m := probe(p)
-		out = append(out, Track{
-			Src:    p,
-			Title:  fallback(m.Title, stripExt(filepath.Base(p))),
-			Artist: fallback(m.Artist, parentDir(p, f.root)),
-			Album:  m.Album,
-			Year:   m.Year,
-			BPM:    m.BPM,
-		})
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		out = append(out, f.track(p))
 		if len(out) >= n {
 			break
 		}
@@ -142,6 +141,9 @@ func (f *folder) MarkPlayed(src string) {
 }
 
 func (f *folder) Search(q string) ([]Track, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshLocked()
 	q = strings.ToLower(q)
 	if q == "" {
 		return nil, nil
@@ -150,21 +152,63 @@ func (f *folder) Search(q string) ([]Track, error) {
 	for _, p := range f.files {
 		hay := strings.ToLower(filepath.Base(p) + " " + parentDir(p, f.root))
 		if strings.Contains(hay, q) {
-			m := probe(p)
-			out = append(out, Track{
-				Src:    p,
-				Title:  fallback(m.Title, stripExt(filepath.Base(p))),
-				Artist: fallback(m.Artist, parentDir(p, f.root)),
-				Album:  m.Album,
-				Year:   m.Year,
-				BPM:    m.BPM,
-			})
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
+			out = append(out, f.track(p))
 			if len(out) >= 10 {
 				break
 			}
 		}
 	}
 	return out, nil
+}
+
+func (f *folder) track(p string) Track {
+	m := probe(p)
+	a := readAttribution(p)
+	return Track{
+		Src: p, Title: fallback(m.Title, stripExt(filepath.Base(p))),
+		Artist: fallback(m.Artist, parentDir(p, f.root)), Album: m.Album,
+		Year: m.Year, BPM: m.BPM, AttributionURL: a.Source, LicenseURL: a.License,
+	}
+}
+
+type attribution struct {
+	Source  string `json:"source"`
+	License string `json:"license"`
+}
+
+func readAttribution(path string) attribution {
+	var a attribution
+	sidecar := strings.TrimSuffix(path, filepath.Ext(path)) + ".license.json"
+	if data, err := os.ReadFile(sidecar); err == nil && len(data) <= 16<<10 {
+		_ = json.Unmarshal(data, &a)
+	}
+	return a
+}
+
+func (f *folder) refreshLocked() {
+	if time.Since(f.lastScan) < 20*time.Second {
+		return
+	}
+	var files []string
+	if walkAudio(f.root, map[string]bool{}, &files) == nil && len(files) > 0 {
+		known := make(map[string]bool, len(files))
+		for _, path := range files {
+			known[path] = true
+		}
+		for path := range f.played {
+			if !known[path] {
+				delete(f.played, path)
+			}
+		}
+		f.files = files
+		if f.cursor >= len(f.files) {
+			f.cursor = 0
+		}
+	}
+	f.lastScan = time.Now()
 }
 
 // ---------- navidrome (Subsonic) ----------
@@ -229,7 +273,7 @@ func (n *navidrome) Search(q string) ([]Track, error) {
 			SearchResult3 struct {
 				Song []struct {
 					ID, Title, Artist, Album string
-					Year                    int
+					Year                     int
 				} `json:"song"`
 			} `json:"searchResult3"`
 		} `json:"subsonic-response"`
@@ -439,4 +483,3 @@ func yearOf(s string) string {
 	}
 	return s
 }
-

@@ -83,3 +83,16 @@ func TestReserveBulletinFlashRejectsOldItems(t *testing.T) {
 		t.Fatalf("old item selected for flash: %#v", got)
 	}
 }
+
+func TestReserveItemsPreferredChoosesFreshPreferredCategory(t *testing.T) {
+	now := time.Now()
+	q := NewQueue(t.TempDir())
+	items := []Item{
+		{Source: "top", Category: "general", Title: "newest general", URL: "https://example.test/general", PublishedAt: now.Format(time.RFC1123Z)},
+		{Source: "market", Category: "finance", Title: "finance", URL: "https://example.test/finance", PublishedAt: now.Add(-time.Minute).Format(time.RFC1123Z)},
+	}
+	got, ok := q.ReserveItemsPreferred(items, 6*time.Hour, "finance")
+	if !ok || got.Category != "finance" {
+		t.Fatalf("preferred selection = %#v, %v", got, ok)
+	}
+}

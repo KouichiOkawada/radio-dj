@@ -25,22 +25,30 @@
     const state = snapshot.news_state || (ready ? 'ready' : 'loading');
 
     const alreadyInNewsMode = snapshot.mode === 'news';
-    button.disabled = !ready && !alreadyInNewsMode;
-    button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
-    button.style.opacity = button.disabled ? '.5' : '1';
-    button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
+    // Switching mode is always immediate. While TTS is still rendering, the
+    // playback loop safely uses music and replaces it at the next boundary.
+    button.disabled = false;
+    button.setAttribute('aria-disabled', 'false');
+    button.style.opacity = '1';
+    button.style.cursor = 'pointer';
+
+    const kindNames = {full:'定時ニュース',flash:'速報',morning_market:'朝のマーケット',tokyo_close:'東京市場まとめ'};
+    const nextAt = snapshot.next_news_at ? new Date(snapshot.next_news_at) : null;
+    const nextLabel = nextAt && Number.isFinite(nextAt.getTime())
+      ? ` · NEXT ${nextAt.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})} ${kindNames[snapshot.next_news_kind] || ''}`
+      : '';
 
     if (ready) {
       button.textContent = defaultLabel;
       button.title = count > 0 ? `放送準備済みニュース ${count} 件` : 'ニュース放送の準備ができています';
-      if (stateEl) stateEl.textContent = `NEWS ENGINE · READY${count > 0 ? ` · ${count}件先読み済み` : ''}`;
+      if (stateEl) stateEl.textContent = `NEWS ENGINE · READY${count > 0 ? ` · ${count}件先読み済み` : ''}${nextLabel}`;
       return;
     }
 
     if (alreadyInNewsMode) {
       button.textContent = defaultLabel;
       button.title = 'ニュース連続モードで放送中です';
-      if (stateEl) stateEl.textContent = 'NEWS ENGINE · 次のニュースを準備中';
+      if (stateEl) stateEl.textContent = 'NEWS ENGINE · 次のニュースを準備中' + nextLabel;
       return;
     }
 
@@ -54,13 +62,13 @@
     if (state === 'waiting') {
       button.textContent = 'ニュース待機中…';
       button.title = '新しいニュースを確認しています';
-      if (stateEl) stateEl.textContent = 'NEWS ENGINE · 新着確認中';
+      if (stateEl) stateEl.textContent = 'NEWS ENGINE · 新着確認中' + nextLabel;
       return;
     }
 
     button.textContent = 'ニュース準備中…';
     button.title = 'RSS取得・音声生成・BGM合成をバックグラウンドで実行しています';
-    if (stateEl) stateEl.textContent = 'NEWS ENGINE · RSS / TTS / BGM を準備中';
+    if (stateEl) stateEl.textContent = 'NEWS ENGINE · RSS / TTS / BGM を準備中' + nextLabel;
   }
 
   // The main player already receives /events, but this tiny independent SSE

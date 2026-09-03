@@ -27,6 +27,7 @@ import (
 	"radio-dj/internal/i18n"
 	"radio-dj/internal/icecast"
 	"radio-dj/internal/library"
+	"radio-dj/internal/musicfeed"
 	"radio-dj/internal/news"
 	"radio-dj/internal/skills"
 	"radio-dj/internal/status"
@@ -119,7 +120,7 @@ func Serve(cfg config.Config) error {
 	defer stopCollectors()
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
-	log.Printf("[radio-dj] UI :%d · stream :%d/stream.aac · POST /request", cfg.StatusPort, cfg.IcecastPort)
+	log.Printf("[radio-dj] UI :%d · stream :%d%s · POST /request", cfg.StatusPort, cfg.IcecastPort, cfg.IcecastMount)
 
 	var djx *dj.DJ
 	var vox *voice.Voice
@@ -142,8 +143,13 @@ func Serve(cfg config.Config) error {
 	// complete audio breaks while music is already available, so mode switches
 	// and track starts never wait on RSS, OGP, Ollama, edge-tts, or ffmpeg.
 	news.StartCollectors(collectorCtx, newsStore, toNewsFeeds(cfg.NewsFeeds))
+	if cfg.Source == "folder" && cfg.AutoMusicEnabled {
+		musicfeed.Start(collectorCtx, cfg.AutoMusicTempDir, cfg.StateDir)
+		log.Printf("[musicfeed] automatic open-music pool enabled: %s", cfg.AutoMusicTempDir)
+	}
 	programClock := news.NewProgramClock()
 	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
+	st.SetNewsPriorityHandler(newsPrep.SetPriority)
 
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
@@ -306,14 +312,24 @@ func Serve(cfg config.Config) error {
 			// this batch was prefetched, replace the filler instead of playing a full
 			// extra song and making the mode appear unresponsive.
 			if seg.NewsFallback {
-				if ready, ok := newsPrep.tryTake(""); ok {
-					replacement := make([]Segment, 0, len(segs)-1+len(ready))
-					replacement = append(replacement, segs[:i]...)
-					replacement = append(replacement, ready...)
-					replacement = append(replacement, segs[i+1:]...)
-					segs = replacement
-					i--
-					continue
+				var takeSlot *news.ProgramSlot
+				shouldTake := currentMode == "news"
+				if currentMode == "radio" {
+					if slot, due := programClock.Due(time.Now()); due {
+						takeSlot = &slot
+						shouldTake = true
+					}
+				}
+				if shouldTake {
+					if ready, ok := newsPrep.tryTake(takeSlot); ok {
+						replacement := make([]Segment, 0, len(segs)-1+len(ready))
+						replacement = append(replacement, segs[:i]...)
+						replacement = append(replacement, ready...)
+						replacement = append(replacement, segs[i+1:]...)
+						segs = replacement
+						i--
+						continue
+					}
 				}
 			}
 			if seg.IsNews {
@@ -426,7 +442,8 @@ func Serve(cfg config.Config) error {
 							return
 						case <-ticker.C:
 							mode := modes.Get()
-							if (mode == "news" || mode == "radio") && (st.NewsReady() || queuedNewsBatches.Load() > 0) {
+							newsCanInterrupt := mayInterruptForNews(mode, programClock, time.Now())
+							if newsCanInterrupt && (st.NewsReady() || queuedNewsBatches.Load() > 0) {
 								controlMu.Lock()
 								_ = streamer.SkipCurrent()
 								controlMu.Unlock()
@@ -444,6 +461,7 @@ func Serve(cfg config.Config) error {
 			if perr != nil && control == "" {
 				log.Printf("[radio-dj] segment error: %v", perr)
 			}
+			cleanupTransient(cfg.AutoMusicTempDir, seg.Path)
 			if control == "previous" && previousTrack != nil {
 				prev := *previousTrack
 				log.Printf("[radio-dj] ◀ replay %s — %s", prev.Meta.Title, prev.Meta.Artist)
@@ -502,6 +520,17 @@ func Serve(cfg config.Config) error {
 	return nil
 }
 
+func mayInterruptForNews(mode string, clock *news.ProgramClock, now time.Time) bool {
+	if mode == "news" {
+		return true
+	}
+	if mode != "radio" || clock == nil {
+		return false
+	}
+	_, due := clock.Due(now)
+	return due
+}
+
 func segmentsContainNews(segs []Segment) bool {
 	for _, seg := range segs {
 		if seg.IsNews {
@@ -518,6 +547,28 @@ func segmentsContainNewsFallback(segs []Segment) bool {
 		}
 	}
 	return false
+}
+
+func cleanupTransient(tempDir, path string) {
+	if strings.TrimSpace(tempDir) == "" || strings.TrimSpace(path) == "" {
+		return
+	}
+	root, err := filepath.Abs(tempDir)
+	if err != nil {
+		return
+	}
+	target, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+		return
+	}
+	if strings.EqualFold(filepath.Ext(target), ".mp3") {
+		_ = os.Remove(target)
+		_ = os.Remove(strings.TrimSuffix(target, filepath.Ext(target)) + ".license.json")
+	}
 }
 
 // buildTanda returns the ordered segments for one batch (requested songs
@@ -539,11 +590,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
 	addNews := func(slot *news.ProgramSlot) bool {
-		kind := news.ProgramKind("")
-		if slot != nil {
-			kind = slot.Kind
-		}
-		prepared, ok := newsPrep.tryTake(kind)
+		prepared, ok := newsPrep.tryTake(slot)
 		if !ok {
 			return false
 		}
@@ -583,15 +630,14 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		return segs, "", nil
 	}
 
-	// Radio mode is a predictable news → opinion → song programme. The clock
-	// supplies a label when a formal slot is due, but fresh READY news also airs
-	// between slots; otherwise "radio" could silently become hours of music.
+	// Radio mode follows the wall clock. News is prepared in the background and
+	// airs at the next natural song boundary only when a formal slot is due.
 	didNews := false
+	newsDue := false
 	if cfg.DJEnabled && len(cfg.NewsFeeds) > 0 {
 		if slot, due := programClock.Due(time.Now()); due {
+			newsDue = true
 			didNews = addNews(&slot)
-		} else {
-			didNews = addNews(nil)
 		}
 	}
 
@@ -643,7 +689,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		// not pre-plan an eight-song block that delays a newly READY bulletin.
 		if len(segs) == 0 {
 			if t, e := lib.Next(); e == nil {
-				segs = append(segs, Segment{Path: t.Src, Meta: t, NewsFallback: true})
+				segs = append(segs, Segment{Path: t.Src, Meta: t, NewsFallback: newsDue})
 				*trackCount++
 			}
 		}
@@ -758,11 +804,11 @@ func toStatus(t library.Track) status.Track {
 	if t.Src != "" && !strings.Contains(t.Src, "://") {
 		d = library.Duration(t.Src).Seconds()
 	}
-	return status.Track{Type: "music", Title: t.Title, Artist: t.Artist, Album: t.Album, Year: t.Year, BPM: t.BPM, Duration: d, Src: t.Src}
+	return status.Track{Type: "music", Title: t.Title, Artist: t.Artist, Album: t.Album, Year: t.Year, BPM: t.BPM, Duration: d, Src: t.Src, AttributionURL: t.AttributionURL, LicenseURL: t.LicenseURL}
 }
 
 func toNewsStatus(item news.Item, speech string) status.Track {
-	return status.Track{Type: "news", Title: item.Title, Source: item.Source, URL: item.URL, Description: item.Description, PublishedAt: item.PublishedAt, ImageURL: item.ImageURL, SpeechText: speech}
+	return status.Track{Type: "news", Title: item.Title, Source: item.Source, Category: item.Category, URL: item.URL, Description: item.Description, PublishedAt: item.PublishedAt, ImageURL: item.ImageURL, SpeechText: speech}
 }
 
 func or(s, def string) string {

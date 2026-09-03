@@ -160,6 +160,28 @@ func (q *Queue) ReserveItems(items []Item, maxAge time.Duration) (Item, bool) {
 	return Item{}, false
 }
 
+// ReserveItemsPreferred gives the listener's current topic preference first
+// refusal while preserving all freshness, replay-cooldown and reservation
+// rules. If that category has no usable story, normal selection continues.
+func (q *Queue) ReserveItemsPreferred(items []Item, maxAge time.Duration, preferred string) (Item, bool) {
+	preferred = strings.ToLower(strings.TrimSpace(preferred))
+	if preferred == "" {
+		return q.ReserveItems(items, maxAge)
+	}
+	ordered := make([]Item, 0, len(items))
+	for _, item := range items {
+		if strings.EqualFold(item.Category, preferred) {
+			ordered = append(ordered, item)
+		}
+	}
+	for _, item := range items {
+		if !strings.EqualFold(item.Category, preferred) {
+			ordered = append(ordered, item)
+		}
+	}
+	return q.ReserveItems(ordered, maxAge)
+}
+
 // ReserveBulletin selects a balanced, deterministic set from a collector
 // snapshot. FULL NEWS prefers finance, general and Hokkaido in that order;
 // FLASH is intentionally short and only accepts stories from the last 30
