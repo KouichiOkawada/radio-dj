@@ -152,9 +152,9 @@ func Load() Config {
 		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
 		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
 		NewsFeeds:       f.NewsFeeds,
-		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 72),
+		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 6),
 		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
-		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.35),
+		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
 		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
 		PlayMode:        normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
 		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
@@ -164,6 +164,15 @@ func Load() Config {
 		StatusPort:      getint("RDJ_STATUS_PORT", 7710),
 		StateDir:        getenv("RDJ_STATE_DIR", dir),
 	}
+
+	// Ollama deliberately skips the heavyweight structured director. In radio
+	// mode its batch boundary is therefore also the deterministic news cadence.
+	// Aligning the batch with news_every makes "3" actually mean roughly every
+	// three songs instead of only matching occasionally against an 8-song chunk.
+	if strings.EqualFold(c.LLMProvider, "ollama") && c.PlayMode == "radio" && c.NewsEvery > 0 {
+		c.Chunk = c.NewsEvery
+	}
+
 	// Ollama runs locally and does not require an API key. Other providers keep
 	// the existing key requirement so an accidental cloud configuration cannot
 	// make unauthenticated requests.
@@ -215,7 +224,7 @@ func normalizeAudio(a AudioSettings, legacyNews float64) AudioSettings {
 	if a.NewsBGMVolume == 0 {
 		a.NewsBGMVolume = legacyNews
 		if a.NewsBGMVolume == 0 {
-			a.NewsBGMVolume = 0.35
+			a.NewsBGMVolume = 0.15
 		}
 	}
 	return a
