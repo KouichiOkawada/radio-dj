@@ -191,6 +191,7 @@ func randHex(n int) string {
 // timeout rejects) and a /stream.aac mount.
 func renderConfig(stateDir, host string, port int, sourcePw, adminPw, mount string) string {
 	logs := filepath.Join(stateDir, "logs")
+	base, web, admin := icecastPaths()
 	return fmt.Sprintf(`<icecast>
   <location>Earth</location>
   <admin>radio-dj@localhost</admin>
@@ -210,10 +211,10 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw, mount stri
   <listen-socket><port>%d</port></listen-socket>
   <fileserve>1</fileserve>
   <paths>
-    <basedir>%s/share/icecast</basedir>
+    <basedir>%s</basedir>
     <logdir>%s</logdir>
-    <webroot>%s/share/icecast/web</webroot>
-    <adminroot>%s/share/icecast/admin</adminroot>
+    <webroot>%s</webroot>
+    <adminroot>%s</adminroot>
     <alias source="/" destination="/status.xsl"/>
   </paths>
   <logging><accesslog>access.log</accesslog><errorlog>error.log</errorlog><loglevel>2</loglevel></logging>
@@ -223,7 +224,18 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw, mount stri
     <stream-name>radio-dj</stream-name>
   </mount>
 </icecast>
-`, sourcePw, sourcePw, adminPw, host, port, brewPrefix(), logs, brewPrefix(), brewPrefix(), mount)
+`, sourcePw, sourcePw, adminPw, host, port, base, logs, web, admin, mount)
+}
+
+// icecastPaths maps Icecast's installed web/admin assets for each platform.
+// The Windows MSI puts them directly below its installation directory, unlike
+// Homebrew which uses share/icecast.
+func icecastPaths() (base, web, admin string) {
+	base = brewPrefix()
+	if runtime.GOOS == "windows" {
+		return base, filepath.Join(base, "web"), filepath.Join(base, "admin")
+	}
+	return filepath.Join(base, "share", "icecast"), filepath.Join(base, "share", "icecast", "web"), filepath.Join(base, "share", "icecast", "admin")
 }
 
 // brewPrefix returns the homebrew prefix for icecast's share dir (macOS).
