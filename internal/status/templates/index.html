@@ -260,6 +260,9 @@
     .ask{ grid-area:ask; padding:20px; }
     .ask input,.ask button{ border:1px solid var(--line); }
     .ask button{ border-radius:0 9px 9px 0; }
+    /* Keep the primary controls in the first screenful even while the cassette is tall. */
+    .stack.state-news .mode-card,.stack.state-news .volume-card{ margin-top:-250px; }
+    .stack.state-dj .mode-card,.stack.state-dj .volume-card{ margin-top:-135px; }
   }
   @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
@@ -691,6 +694,9 @@
 
   function applyNowPlaying(j){
     const c = j.current||{};
+    const deck = $('deck');
+    deck.classList.toggle('state-news', c.type === 'news');
+    deck.classList.toggle('state-dj', c.type === 'dj');
     setModeUI(j.mode || 'radio');
     const newsCard = $('news-card');
     const djCard = $('dj-card');
