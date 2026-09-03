@@ -45,6 +45,8 @@ type Config struct {
 	NewsMaxAgeHours int
 	NewsBGMPath     string
 	NewsBGMVolume   float64
+	JQuantsAPIKey   string
+	WatchSymbols    []string
 	Audio           AudioSettings
 	PlayMode        string
 
@@ -148,6 +150,8 @@ type fileConfig struct {
 	NewsMaxAgeHours int           `json:"news_max_age_hours,omitempty"`
 	NewsBGMPath     string        `json:"news_bgm_path,omitempty"`
 	NewsBGMVolume   float64       `json:"news_bgm_volume,omitempty"`
+	JQuantsAPIKey   string        `json:"jquants_api_key,omitempty"`
+	WatchSymbols    []string      `json:"watch_symbols,omitempty"`
 	Audio           AudioSettings `json:"audio,omitempty"`
 	PlayMode        string        `json:"play_mode,omitempty"`
 }
@@ -202,6 +206,8 @@ func Load() Config {
 		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 6),
 		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
 		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
+		JQuantsAPIKey:   firstNonEmpty(os.Getenv("JQUANTS_API_KEY"), f.JQuantsAPIKey),
+		WatchSymbols:    append([]string(nil), f.WatchSymbols...),
 		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
 		PlayMode:        normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
 		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
