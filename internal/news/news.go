@@ -25,30 +25,36 @@ type Feed struct {
 	URL  string `json:"url"`
 }
 
-// MixWithBed creates a complete news segment: the bed loops under the TTS
-// file, stays at the configured gain, and ends exactly with the speech. It
-// deliberately returns an error when the configured bed is absent: news must
-// never silently fall back to dry speech.
+// MixWithBed creates a complete news segment. The bed is enhancement only:
+// if it is missing, ffmpeg is unavailable, or mixing fails, the dry speech is
+// returned instead. A cosmetic BGM problem must never suppress a bulletin.
 func MixWithBed(ffmpeg, speechPath, bedPath, outDir string, volume float64) (string, error) {
+	if strings.TrimSpace(speechPath) == "" {
+		return "", fmt.Errorf("news speech path is empty")
+	}
+	if strings.TrimSpace(bedPath) == "" {
+		return speechPath, nil
+	}
 	if _, err := os.Stat(bedPath); err != nil {
-		return "", fmt.Errorf("news bed unavailable: %w", err)
+		return speechPath, nil
 	}
 	if ffmpeg == "" {
 		var err error
 		ffmpeg, err = exec.LookPath("ffmpeg")
 		if err != nil {
-			return "", fmt.Errorf("ffmpeg not found: %w", err)
+			return speechPath, nil
 		}
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return "", err
+		return speechPath, nil
 	}
 	out := filepath.Join(outDir, fmt.Sprintf("news-%d.mp3", time.Now().UnixNano()))
 	filter := fmt.Sprintf("[0:a]volume=%.3f,afade=t=in:st=0:d=0.4[bed];[bed][1:a]amix=inputs=2:duration=shortest:normalize=0[mix]", volume)
 	cmd := exec.Command(ffmpeg, "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", bedPath, "-i", speechPath,
 		"-filter_complex", filter, "-map", "[mix]", "-c:a", "libmp3lame", "-b:a", "192k", "-shortest", out)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("mix news bed: %w: %s", err, strings.TrimSpace(string(output)))
+	if _, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(out)
+		return speechPath, nil
 	}
 	return out, nil
 }
@@ -62,9 +68,11 @@ type Item struct {
 	ImageURL    string
 }
 
-// Queue selects unseen items across every configured feed and remembers them
-// in the station state directory. It deliberately does not recycle an item
-// just because a feed has not published something new yet.
+// Queue selects current items across every configured feed and remembers when
+// each one was queued. The policy prefers genuinely fresh unseen stories, then
+// recent replays after a cooldown, and only then older same-day items. This
+// keeps a personal radio useful for hours without pretending stale backlog is
+// breaking news or going silent once every fresh URL has been heard once.
 type Queue struct {
 	path string
 	seen map[string]time.Time
@@ -83,33 +91,87 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// The personal station is intended to sound current, not to drain a day-old
-	// backlog. Legacy configs used 72h, so cap them here at six hours. If no
-	// unseen item exists in that window the caller falls back to music.
-	if maxAge <= 0 || maxAge > 6*time.Hour {
-		maxAge = 6 * time.Hour
+	items := Fetch(feeds)
+	if len(items) == 0 {
+		return Item{}, false
 	}
 
-	// Fetch sorts globally by publication time, so this always chooses the
-	// newest unseen entry across all configured feeds instead of exhausting the
-	// first feed before considering fresher stories from later feeds.
-	for _, item := range Fetch(feeds) {
-		if !fresh(item.PublishedAt, maxAge) {
-			continue
-		}
-		key := item.URL
-		if key == "" {
-			key = item.Source + "\n" + item.Title
-		}
-		if _, played := q.seen[key]; played {
-			continue
-		}
-		q.seen[key] = time.Now()
-		q.prune()
-		q.save()
+	// Six hours is the preferred "current" window. Old configs used 72h;
+	// honoring that literally made the station call yesterday's stories new.
+	preferredAge := maxAge
+	if preferredAge <= 0 || preferredAge > 6*time.Hour {
+		preferredAge = 6 * time.Hour
+	}
+
+	// 1) Fresh unseen stories first.
+	if item, ok := q.pickUnseen(items, preferredAge); ok {
+		q.remember(item)
+		return item, true
+	}
+
+	// 2) A current story may be repeated on a long-running radio, but not every
+	// cycle. This is preferable to draining an old backlog just to avoid silence.
+	if item, ok := q.pickReplay(items, preferredAge, 90*time.Minute); ok {
+		q.remember(item)
+		return item, true
+	}
+
+	// 3) If feeds are quiet, allow an unseen item from the last 24 hours. The
+	// spoken script includes its actual publication time and does not say it is
+	// the latest headline.
+	if item, ok := q.pickUnseen(items, 24*time.Hour); ok {
+		q.remember(item)
+		return item, true
+	}
+
+	// 4) Final radio-friendly fallback: replay a <=24h story only after a long
+	// cooldown. If even that is unavailable, caller should simply keep music on.
+	if item, ok := q.pickReplay(items, 24*time.Hour, 3*time.Hour); ok {
+		q.remember(item)
 		return item, true
 	}
 	return Item{}, false
+}
+
+func itemKey(item Item) string {
+	if strings.TrimSpace(item.URL) != "" {
+		return strings.TrimSpace(item.URL)
+	}
+	return item.Source + "\n" + item.Title
+}
+
+func (q *Queue) pickUnseen(items []Item, maxAge time.Duration) (Item, bool) {
+	for _, item := range items {
+		if !fresh(item.PublishedAt, maxAge) {
+			continue
+		}
+		if _, played := q.seen[itemKey(item)]; played {
+			continue
+		}
+		return item, true
+	}
+	return Item{}, false
+}
+
+func (q *Queue) pickReplay(items []Item, maxAge, cooldown time.Duration) (Item, bool) {
+	now := time.Now()
+	for _, item := range items {
+		if !fresh(item.PublishedAt, maxAge) {
+			continue
+		}
+		last, played := q.seen[itemKey(item)]
+		if !played || now.Sub(last) < cooldown {
+			continue
+		}
+		return item, true
+	}
+	return Item{}, false
+}
+
+func (q *Queue) remember(item Item) {
+	q.seen[itemKey(item)] = time.Now()
+	q.prune()
+	q.save()
 }
 
 var publishedLayouts = []string{
@@ -361,6 +423,28 @@ func spokenPublished(value, language string) string {
 	return local.Format("Jan 2 15:04")
 }
 
+func japaneseLead(items []Item) string {
+	if len(items) == 0 {
+		return ""
+	}
+	published, ok := parsePublished(items[0].PublishedAt)
+	if !ok {
+		return "ニュースをお伝えします。"
+	}
+	age := time.Since(published)
+	if age >= -15*time.Minute && age <= 3*time.Hour {
+		return "ただいま入っているニュースをお伝えします。"
+	}
+	local := published.Local()
+	now := time.Now()
+	y1, m1, d1 := now.Date()
+	y2, m2, d2 := local.Date()
+	if y1 == y2 && m1 == m2 && d1 == d2 {
+		return "今日のニュースからお伝えします。"
+	}
+	return "直近のニュースからお伝えします。"
+}
+
 // Script builds an attribution-first bulletin without adding facts not present
 // in the feed. This is deliberately deterministic rather than LLM-written.
 func Script(items []Item, language string) string {
@@ -369,10 +453,7 @@ func Script(items []Item, language string) string {
 	}
 	var b strings.Builder
 	if language == "ja" {
-		// Do not claim an item is "latest" merely because it is unseen. Queue
-		// already enforces freshness; this wording remains accurate even when a
-		// feed has not published in the last few minutes.
-		b.WriteString("ただいま入っているニュースをお伝えします。")
+		b.WriteString(japaneseLead(items))
 		for _, item := range items {
 			source := item.Source
 			if source == "" {
