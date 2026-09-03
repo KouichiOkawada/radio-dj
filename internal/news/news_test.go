@@ -57,22 +57,36 @@ func TestReserveBulletinBalancesFullNews(t *testing.T) {
 	now := time.Now()
 	q := NewQueue(t.TempDir())
 	items := []Item{
+		{Source: "stocks", Category: "stock", Title: "stocks", URL: "https://example.test/stocks", PublishedAt: now.Add(time.Minute).Format(time.RFC1123Z)},
 		{Source: "market", Category: "finance", Title: "市場", URL: "https://example.test/market", PublishedAt: now.Format(time.RFC1123Z)},
 		{Source: "top", Category: "general", Title: "国内", URL: "https://example.test/top", PublishedAt: now.Add(-time.Minute).Format(time.RFC1123Z)},
 		{Source: "sapporo", Category: "hokkaido", Title: "札幌", URL: "https://example.test/sapporo", PublishedAt: now.Add(-2 * time.Minute).Format(time.RFC1123Z)},
 	}
 	got := q.ReserveBulletin(items, ProgramFull)
-	if len(got) != 3 {
-		t.Fatalf("got %d items, want 3: %#v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("got %d items, want 4: %#v", len(got), got)
 	}
 	seen := map[string]bool{}
 	for _, item := range got {
 		seen[item.Category] = true
 	}
-	for _, category := range []string{"finance", "general", "hokkaido"} {
+	for _, category := range []string{"stock", "finance", "general", "hokkaido"} {
 		if !seen[category] {
 			t.Fatalf("missing %s in %#v", category, got)
 		}
+	}
+}
+
+func TestReserveItemsPreferredChoosesStockCategory(t *testing.T) {
+	now := time.Now()
+	q := NewQueue(t.TempDir())
+	items := []Item{
+		{Source: "top", Category: "general", Title: "newest general", URL: "https://example.test/general", PublishedAt: now.Format(time.RFC1123Z)},
+		{Source: "stocks", Category: "stock", Title: "stock", URL: "https://example.test/stock", PublishedAt: now.Add(-time.Minute).Format(time.RFC1123Z)},
+	}
+	got, ok := q.ReserveItemsPreferred(items, 6*time.Hour, "stock")
+	if !ok || got.Category != "stock" {
+		t.Fatalf("stock selection = %#v, %v", got, ok)
 	}
 }
 

@@ -183,7 +183,7 @@ func (q *Queue) ReserveItemsPreferred(items []Item, maxAge time.Duration, prefer
 }
 
 // ReserveBulletin selects a balanced, deterministic set from a collector
-// snapshot. FULL NEWS prefers finance, general and Hokkaido in that order;
+// snapshot. FULL NEWS prefers stock, finance, general and Hokkaido in that order;
 // FLASH is intentionally short and only accepts stories from the last 30
 // minutes. Reservation is still in-memory until audio actually airs.
 func (q *Queue) ReserveBulletin(items []Item, kind ProgramKind) []Item {
@@ -194,7 +194,7 @@ func (q *Queue) ReserveBulletin(items []Item, kind ProgramKind) []Item {
 	defer q.mu.Unlock()
 	q.pruneReservations()
 
-	limit := 3
+	limit := 4
 	maxAge := 6 * time.Hour
 	if kind == ProgramFlash {
 		limit, maxAge = 2, 30*time.Minute
@@ -230,6 +230,7 @@ func (q *Queue) ReserveBulletin(items []Item, kind ProgramKind) []Item {
 		}
 	}
 	if kind == ProgramFull || kind == ProgramMorningMarket || kind == ProgramTokyoClose {
+		pick("stock", 4*time.Hour)
 		pick("finance", 4*time.Hour)
 		pick("general", 6*time.Hour)
 		pick("hokkaido", 12*time.Hour)

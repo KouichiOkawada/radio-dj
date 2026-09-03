@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// JQuants adds dated, verified company context to finance commentary. It is
+// JQuants adds dated, verified company context to stock-news commentary. It is
 // deliberately fail-soft: RSS news still airs if the service is unavailable.
 type JQuants struct {
 	apiKey  string

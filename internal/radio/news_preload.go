@@ -30,6 +30,8 @@ type newsPreloader struct {
 	enabled      bool
 	mu           sync.RWMutex
 	priority     string
+	source       string
+	sources      map[string]bool
 	generation   atomic.Uint64
 	readyStories atomic.Int32
 }
@@ -49,7 +51,11 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 		queue:   queue,
 		store:   store,
 		clock:   clock,
+		sources: map[string]bool{},
 		enabled: vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
+	}
+	for _, feed := range cfg.NewsFeeds {
+		p.sources[feed.Name] = true
 	}
 	if !p.enabled {
 		st.SetNewsReadiness(false, 0, "unavailable")
@@ -91,6 +97,16 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		generation := p.generation.Load()
 		snapshot := store.Snapshot()
 		priority := p.Priority()
+		source := p.Source()
+		if source != "" {
+			filtered := make([]news.Item, 0, len(snapshot))
+			for _, item := range snapshot {
+				if item.Source == source {
+					filtered = append(filtered, item)
+				}
+			}
+			snapshot = filtered
+		}
 		var items []news.Item
 		if priority != "" {
 			if item, ok := queue.ReserveItemsPreferred(snapshot, time.Duration(cfg.NewsMaxAgeHours)*time.Hour, priority); ok {
@@ -129,6 +145,8 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			if err != nil {
 				log.Printf("[news] preload mix: %v", err)
 				mixedPath = speechPath
+			} else if mixedPath != speechPath {
+				log.Printf("[news] BGM mixed under bulletin at %.0f%%", cfg.Audio.NewsBGMVolume*100)
 			}
 			itemCopy := item
 			segments = append(segments, Segment{Path: mixedPath, IsNews: true, News: &itemCopy, NewsItems: []news.Item{itemCopy}, Text: bulletin})
@@ -146,16 +164,16 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		// The commentary is opinion/personality only. It is grounded on the RSS
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
-		if djx != nil && slot.Kind != news.ProgramFlash {
+		if djx != nil && (slot.Kind != news.ProgramFlash || priority != "" || source != "") {
 			item := items[0]
 			for _, candidate := range items {
-				if strings.EqualFold(candidate.Category, "finance") {
+				if strings.EqualFold(candidate.Category, "stock") {
 					item = candidate
 					break
 				}
 			}
 			marketContext := ""
-			if strings.EqualFold(item.Category, "finance") {
+			if strings.EqualFold(item.Category, "stock") {
 				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 				marketContext = market.MarketContext(ctx, cfg.WatchSymbols)
 				cancel()
@@ -163,6 +181,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 					log.Printf("[news] J-Quants context ready for %d watch symbol(s)", len(cfg.WatchSymbols))
 				}
 			}
+			log.Printf("[news] AI context: RSS source=%q category=%s J-Quants=%t", item.Source, item.Category, marketContext != "")
 			comment := strings.TrimSpace(djx.NewsBriefComment(item.Source, item.Title, item.Description, marketContext))
 			if comment == "" {
 				comment = "「" + item.Title + "」という動きが、これから私たちの暮らしや選択にどう響くのか。事実と今後の変化を分けながら、落ち着いて見ていきたいですね。"
@@ -174,6 +193,8 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 				if merr != nil {
 					log.Printf("[news] preload DJ mix: %v", merr)
 					commentMixed = commentPath
+				} else if commentMixed != commentPath {
+					log.Printf("[news] BGM mixed under AI commentary at %.0f%%", cfg.Audio.NewsBGMVolume*100)
 				}
 				// Keep the related article on screen throughout the commentary instead
 				// of replacing it with a generic AI DJ card.
@@ -203,16 +224,42 @@ func (p *newsPreloader) Priority() string {
 	return p.priority
 }
 
+func (p *newsPreloader) Source() string {
+	if p == nil {
+		return ""
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.source
+}
+
 func (p *newsPreloader) SetPriority(category string) bool {
 	category = strings.ToLower(strings.TrimSpace(category))
 	switch category {
-	case "", "finance", "general", "hokkaido", "tech":
+	case "", "stock", "finance", "general", "hokkaido", "tech":
 	default:
 		return false
 	}
 	p.mu.Lock()
 	p.priority = category
 	p.mu.Unlock()
+	p.invalidateReady()
+	return true
+}
+
+func (p *newsPreloader) SetSource(source string) bool {
+	source = strings.TrimSpace(source)
+	if p == nil || (source != "" && !p.sources[source]) {
+		return false
+	}
+	p.mu.Lock()
+	p.source = source
+	p.mu.Unlock()
+	p.invalidateReady()
+	return true
+}
+
+func (p *newsPreloader) invalidateReady() {
 	p.generation.Add(1)
 	for {
 		select {
@@ -221,7 +268,7 @@ func (p *newsPreloader) SetPriority(category string) bool {
 			p.releaseSegments(prepared.segments)
 		default:
 			p.publish("loading")
-			return true
+			return
 		}
 	}
 }

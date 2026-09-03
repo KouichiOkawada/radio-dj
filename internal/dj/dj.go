@@ -155,7 +155,7 @@ func (d *DJ) NewsCommentary(source, title, description, marketContext string) st
 	}
 	if strings.TrimSpace(marketContext) != "" {
 		prompt += "\nJ-Quantsで確認したウォッチ銘柄情報（ニュースとの直接関係は断定しないこと。値の単位を推測せず、開示日を必ず添えること）:\n" + marketContext +
-			"\n経済ニュースでは、この情報から最低1銘柄を必ず取り上げ、ニュースとの共通点または相違点を私見として述べてください。"
+			"\n株式ニュースでは、この情報から最低1銘柄を必ず取り上げ、ニュースとの共通点または相違点を私見として述べてください。"
 	}
 	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 1200))
 }

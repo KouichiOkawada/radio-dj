@@ -39,4 +39,30 @@ func TestMergeNewsFeedsKeepsConfiguredAndAddsDiverseDefaults(t *testing.T) {
 	if !seen["https://rss.itmedia.co.jp/rss/2.0/aiplus.xml"] {
 		t.Fatal("ITmedia AI baseline feed missing")
 	}
+	stockFound := false
+	for _, feed := range feeds {
+		if feed.Category == "stock" {
+			stockFound = true
+			break
+		}
+	}
+	if !stockFound {
+		t.Fatal("stock baseline feed missing")
+	}
+}
+
+func TestResolveMovedLibraryFileFindsPermanentMusic(t *testing.T) {
+	root := t.TempDir()
+	permanent := filepath.Join(root, "permanent")
+	if err := os.MkdirAll(permanent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(permanent, "bed.mp3")
+	if err := os.WriteFile(want, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := resolveMovedLibraryFile(filepath.Join(root, "bed.mp3"), root)
+	if got != want {
+		t.Fatalf("resolved path = %q, want %q", got, want)
+	}
 }

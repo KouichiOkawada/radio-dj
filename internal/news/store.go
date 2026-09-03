@@ -79,7 +79,7 @@ func StartCollectors(ctx context.Context, store *Store, feeds []Feed) {
 
 func feedInterval(feed Feed) time.Duration {
 	switch feed.Category {
-	case "finance", "general":
+	case "stock", "finance", "general":
 		return 10 * time.Minute
 	case "tech", "hokkaido":
 		return 15 * time.Minute

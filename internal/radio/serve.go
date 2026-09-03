@@ -113,6 +113,15 @@ func Serve(cfg config.Config) error {
 	}
 	st := status.New(cfg.StateDir, cfg.NeedsSetup(), cfg.IcecastMount)
 	st.SetLanguage(cfg.Language)
+	newsSources := make([]string, 0, len(cfg.NewsFeeds))
+	seenNewsSources := map[string]bool{}
+	for _, feed := range cfg.NewsFeeds {
+		if feed.Name != "" && !seenNewsSources[feed.Name] {
+			seenNewsSources[feed.Name] = true
+			newsSources = append(newsSources, feed.Name)
+		}
+	}
+	st.SetNewsSources(newsSources)
 	modes := newPlaybackMode(cfg.PlayMode)
 	newsQueue := news.NewQueue(cfg.StateDir)
 	newsStore := news.NewStore()
@@ -150,6 +159,7 @@ func Serve(cfg config.Config) error {
 	programClock := news.NewProgramClock()
 	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
 	st.SetNewsPriorityHandler(newsPrep.SetPriority)
+	st.SetNewsSourceHandler(newsPrep.SetSource)
 
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW

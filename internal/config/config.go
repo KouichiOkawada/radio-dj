@@ -79,6 +79,7 @@ func DefaultNewsFeeds() []NewsFeed {
 		{Name: "Yahoo!ニュース 国内", URL: "https://news.yahoo.co.jp/rss/categories/domestic.xml", Category: "general"},
 		{Name: "Yahoo!ニュース 国際", URL: "https://news.yahoo.co.jp/rss/categories/world.xml", Category: "general"},
 		{Name: "Yahoo!ニュース 経済", URL: "https://news.yahoo.co.jp/rss/categories/business.xml", Category: "finance"},
+		{Name: "Google News 株式（補助）", URL: "https://news.google.com/rss/search?q=%22%E6%A0%AA%E5%BC%8F%E5%B8%82%E5%A0%B4%22%20OR%20%22%E6%97%A5%E7%B5%8C%E5%B9%B3%E5%9D%87%22%20OR%20TOPIX%20OR%20%E6%9D%B1%E8%A8%BC%20OR%20%E5%80%8B%E5%88%A5%E6%A0%AA&hl=ja&gl=JP&ceid=JP:ja", Category: "stock"},
 		{Name: "Yahoo!ニュース IT", URL: "https://news.yahoo.co.jp/rss/categories/it.xml", Category: "tech"},
 		{Name: "Yahoo!ニュース 科学", URL: "https://news.yahoo.co.jp/rss/categories/science.xml", Category: "tech"},
 		{Name: "ITmedia AI+", URL: "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml", Category: "tech"},
@@ -223,6 +224,7 @@ func Load() Config {
 		StatusPort:       getint("RDJ_STATUS_PORT", 7710),
 		StateDir:         getenv("RDJ_STATE_DIR", dir),
 	}
+	c.NewsBGMPath = resolveMovedLibraryFile(c.NewsBGMPath, c.Library)
 
 	// Ollama deliberately skips the heavyweight structured director. In radio
 	// mode its batch boundary is therefore also the deterministic news cadence.
@@ -238,6 +240,24 @@ func Load() Config {
 	llmReady := c.GLMAPIKey != "" || strings.EqualFold(c.LLMProvider, "ollama")
 	c.DJEnabled = llmReady && (c.VoiceCmd != "" || c.VoiceProvider != "")
 	return c
+}
+
+// resolveMovedLibraryFile keeps older configs working after the installer
+// separated permanent songs from disposable downloads. Only an existing file
+// with the same basename under the library's permanent directory is accepted.
+func resolveMovedLibraryFile(path, libraryRoot string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return path
+	}
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		return path
+	}
+	candidate := filepath.Join(libraryRoot, "permanent", filepath.Base(path))
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		return candidate
+	}
+	return path
 }
 
 func pickOptionalBool(envKey string, fileVal *bool, def bool) bool {

@@ -64,6 +64,8 @@ type NowPlaying struct {
 	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | unavailable
 	NewsPreview    *Track    `json:"news_preview,omitempty"`
 	NewsPriority   string    `json:"news_priority,omitempty"`
+	NewsSource     string    `json:"news_source,omitempty"`
+	NewsSources    []string  `json:"news_sources,omitempty"`
 	NextNewsKind   string    `json:"next_news_kind,omitempty"`
 	NextNewsAt     string    `json:"next_news_at,omitempty"`
 }
@@ -78,6 +80,7 @@ type Server struct {
 	controlHandler      func(string) bool // radio-loop skip callback (POST /control); nil = no radio
 	modeHandler         func(string) bool
 	newsPriorityHandler func(string) bool
+	newsSourceHandler   func(string) bool
 	mode                string
 	lang                string // config.Language ("es"|"en") — drives the index UI strings
 	mount               string // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
@@ -130,6 +133,18 @@ func (s *Server) SetNewsPriorityHandler(h func(string) bool) {
 	s.mu.Unlock()
 }
 
+func (s *Server) SetNewsSourceHandler(h func(string) bool) {
+	s.mu.Lock()
+	s.newsSourceHandler = h
+	s.mu.Unlock()
+}
+
+func (s *Server) SetNewsSources(sources []string) {
+	s.mu.Lock()
+	s.cur.NewsSources = append([]string(nil), sources...)
+	s.mu.Unlock()
+}
+
 func (s *Server) SetNextNewsSlot(kind string, at time.Time) {
 	if s == nil || at.IsZero() {
 		return
@@ -154,6 +169,20 @@ func (s *Server) setNewsPriority(category string) bool {
 	}
 	s.mu.Lock()
 	s.cur.NewsPriority = category
+	s.mu.Unlock()
+	go s.broadcast()
+	return true
+}
+
+func (s *Server) setNewsSource(source string) bool {
+	s.mu.RLock()
+	h := s.newsSourceHandler
+	s.mu.RUnlock()
+	if h == nil || !h(source) {
+		return false
+	}
+	s.mu.Lock()
+	s.cur.NewsSource = source
 	s.mu.Unlock()
 	go s.broadcast()
 	return true
@@ -496,10 +525,6 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			http.Error(w, `{"error":"mode must be radio, music, or news"}`, http.StatusBadRequest)
 			return
 		}
-		if body.Mode == "news" && !s.NewsReady() {
-			writeJSON(w, http.StatusConflict, `{"error":"news is still preparing"}`)
-			return
-		}
 		if !s.setMode(body.Mode) {
 			http.Error(w, `{"error":"mode switch unavailable"}`, http.StatusConflict)
 			return
@@ -520,10 +545,29 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			Category string `json:"category"`
 		}
 		if json.NewDecoder(r.Body).Decode(&body) != nil || !s.setNewsPriority(body.Category) {
-			http.Error(w, `{"error":"category must be finance, general, hokkaido, tech, or empty"}`, http.StatusBadRequest)
+			http.Error(w, `{"error":"category must be stock, finance, general, hokkaido, tech, or empty"}`, http.StatusBadRequest)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"category": body.Category})
+	})
+	mux.HandleFunc("/news-source", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(map[string]string{"source": s.Current().NewsSource})
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.Error(w, "GET or PUT only", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Source string `json:"source"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || !s.setNewsSource(body.Source) {
+			http.Error(w, `{"error":"source must be one of news_sources or empty"}`, http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"source": body.Source})
 	})
 	mux.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {

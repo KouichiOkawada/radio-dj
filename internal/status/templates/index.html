@@ -54,6 +54,11 @@
   .news-priority{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px;padding-top:11px;border-top:1px solid rgba(34,28,22,.16)}
   .news-priority button{border:1px solid var(--line);border-radius:999px;background:#fff;padding:6px 9px;font:800 10px var(--font-ui);cursor:pointer}
   .news-priority button.active{background:#1f6f52;color:#fff;border-color:#1f6f52}
+  .news-source-filter{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(34,28,22,.18)}
+  .news-source-label{font:900 10px var(--font-mono);color:var(--soft);margin-bottom:7px}
+  .news-source-options{display:flex;flex-wrap:wrap;gap:6px;max-height:92px;overflow:auto}
+  .news-source-options button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 8px;font:800 9px var(--font-ui);cursor:pointer;text-align:left}
+  .news-source-options button.active{background:#263f58;color:#fff;border-color:#263f58}
   .volume-card{ display:flex; align-items:center; gap:12px; padding:11px 14px; }
   .volume-card label{ font-family:var(--font-mono); font-size:11px; font-weight:900; white-space:nowrap; }
   .volume-card input{ flex:1; accent-color:var(--onair); }
@@ -303,7 +308,13 @@
         </div>
       </div>
       <div class="news-priority" id="news-priority" aria-label="聞きたいニュースを優先">
-        <button data-news-priority="">おすすめ</button><button data-news-priority="finance">経済</button><button data-news-priority="general">一般</button><button data-news-priority="hokkaido">北海道</button><button data-news-priority="tech">テック</button>
+        <button data-news-priority="">おすすめ</button><button data-news-priority="stock">株式</button><button data-news-priority="finance">経済</button><button data-news-priority="general">一般</button><button data-news-priority="hokkaido">北海道</button><button data-news-priority="tech">テック</button>
+      </div>
+      <div class="news-source-filter">
+        <div class="news-source-label">取得元を1つに絞る（ニュース種類と組み合わせ）</div>
+        <div class="news-source-options" id="news-source-options" aria-label="ニュース取得元">
+          <button data-news-source="" class="active">すべての取得元</button>
+        </div>
       </div>
     </section>
 
@@ -577,6 +588,29 @@
       if(r.ok) document.querySelectorAll('[data-news-priority]').forEach(b=>b.classList.toggle('active', b===button));
     }catch(_){}
   }));
+  let renderedNewsSources = '';
+  function renderNewsSources(snapshot){
+    const sources = Array.isArray(snapshot.news_sources) ? snapshot.news_sources : [];
+    const key = JSON.stringify(sources);
+    const box = $('news-source-options');
+    if(key !== renderedNewsSources){
+      renderedNewsSources = key;
+      box.replaceChildren();
+      for(const source of ['', ...sources]){
+        const button = document.createElement('button');
+        button.dataset.newsSource = source;
+        button.textContent = source || 'すべての取得元';
+        button.addEventListener('click', async ()=>{
+          try{
+            const response = await fetch('/news-source',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source})});
+            if(response.ok) document.querySelectorAll('[data-news-source]').forEach(b=>b.classList.toggle('active', b.dataset.newsSource === source));
+          }catch(_){}
+        });
+        box.appendChild(button);
+      }
+    }
+    document.querySelectorAll('[data-news-source]').forEach(button=>button.classList.toggle('active', button.dataset.newsSource === (snapshot.news_source || '')));
+  }
   // src is (re)assigned on every play so stop() can release it and free the
   // progressive-download buffer WebKit otherwise retains after a long session.
   function playStream(){ audio.src = '{{.StreamPath}}'; return audio.play(); }
@@ -766,6 +800,7 @@
     deck.classList.toggle('state-dj', c.type === 'dj');
     setModeUI(j.mode || 'radio');
     document.querySelectorAll('[data-news-priority]').forEach(button=>button.classList.toggle('active', button.dataset.newsPriority === (j.news_priority || '')));
+    renderNewsSources(j);
     const newsCard = $('news-card');
     const djCard = $('dj-card');
     const shownNews = c.type === 'news' ? c : (j.news_preview || {});
@@ -775,7 +810,7 @@
       : (hasNews && j.news_ready ? 'NEXT NEWS · 放送準備済み' : (hasNews ? 'NEWS DESK · AI解説を準備中' : 'NEWS DESK · ニュースを収集中'));
     if(hasNews){
       $('news-title').textContent = shownNews.title || 'ニュース';
-      const categoryNames = {finance:'経済',general:'一般',hokkaido:'北海道',tech:'テック'};
+      const categoryNames = {stock:'株式',finance:'経済',general:'一般',hokkaido:'北海道',tech:'テック'};
       $('news-meta').textContent = [categoryNames[shownNews.category] || shownNews.category, shownNews.source, shownNews.published_at].filter(Boolean).join(' / ');
       $('news-desc').textContent = shownNews.description || shownNews.speech_text || '';
       const link = $('news-link');
