@@ -193,13 +193,19 @@ func (d *DJ) SayWeather(location, cond string, temp int, ok bool) string {
 
 // complete is the shared chat call. search=true enables web_search (GLM).
 func (d *DJ) complete(user string, search bool) string {
+	maxTokens := 160
+	if d.provider == "ollama" {
+		// qwen3.5 exposes its reasoning separately but still draws it from the
+		// completion budget. A small budget leaves content empty.
+		maxTokens = 1200
+	}
 	body := map[string]any{
 		"model": d.model,
 		"messages": []map[string]string{
 			{"role": "system", "content": d.systemPrompt()},
 			{"role": "user", "content": user},
 		},
-		"max_tokens": 160,
+		"max_tokens": maxTokens,
 	}
 	if d.provider == "glm" {
 		body["thinking"] = map[string]string{"type": "disabled"}
@@ -242,13 +248,17 @@ func (d *DJ) complete(user string, search bool) string {
 // director planner (the plan is longer than a spoken one-liner). Returns the
 // raw model content; the caller parses the JSON.
 func (d *DJ) completeJSON(system, user string) string {
+	maxTokens := 1200
+	if d.provider == "ollama" {
+		maxTokens = 2400
+	}
 	body := map[string]any{
 		"model": d.model,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},
 		},
-		"max_tokens":      1200,
+		"max_tokens":      maxTokens,
 		"response_format": map[string]string{"type": "json_object"},
 	}
 	if d.provider == "glm" {

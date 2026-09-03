@@ -428,6 +428,11 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 				log.Printf("[dj] director falló (%v) — random fallback", perr)
 				for i := 0; i < cfg.Chunk; i++ {
 					if t, e := lib.Next(); e == nil {
+						if i == 0 {
+							// Keep the AI DJ on air even when the structured planner
+							// rejects a plan; the music fallback remains non-blocking.
+							addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
+						}
 						addTrack(t)
 						*trackCount++
 					}
