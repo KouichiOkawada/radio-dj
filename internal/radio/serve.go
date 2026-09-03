@@ -37,6 +37,7 @@ type Segment struct {
 	Path     string
 	IsVoice  bool
 	IsNews   bool
+	IsDJ     bool
 	News     *news.Item
 	LiveTime bool          // voice generated at air-time (clock skill) — no pre-baked Path
 	Midroll  bool          // voice fires mid-song (~50%), not at the start
@@ -257,6 +258,14 @@ func Serve(cfg config.Config) error {
 				}
 				continue
 			}
+			if seg.IsDJ {
+				st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
+				logDJ(status.LogKindDJ, seg.Text)
+				if err := streamer.Play(seg.Path); err != nil {
+					log.Printf("[dj] segment error: %v", err)
+				}
+				continue
+			}
 			if seg.IsVoice {
 				switch {
 				case seg.LiveTime:
@@ -407,7 +416,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		if vox == nil || len(cfg.NewsFeeds) == 0 {
 			return false
 		}
-		item, ok := newsQueue.Next(toNewsFeeds(cfg.NewsFeeds))
+		item, ok := newsQueue.Next(toNewsFeeds(cfg.NewsFeeds), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
 		if !ok {
 			return false
 		}
@@ -424,6 +433,14 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			return false
 		}
 		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &item, Text: bulletin})
+		if djx != nil && vox != nil {
+			comment := djx.Say("次のニュースについて、事実を追加・要約・断定せず、聞き手が考えるきっかけになる短いラジオDJの一言を日本語で話してください。記事: " + item.Title)
+			if comment != "" {
+				if vf, err := vox.Speak(comment); err == nil {
+					segs = append(segs, Segment{Path: vf, IsDJ: true, Text: comment})
+				}
+			}
+		}
 		return true
 	}
 	if mode == "news" {

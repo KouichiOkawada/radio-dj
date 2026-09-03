@@ -78,10 +78,13 @@ func NewQueue(stateDir string) *Queue {
 	return q
 }
 
-func (q *Queue) Next(feeds []Feed) (Item, bool) {
+func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, item := range Fetch(feeds) {
+		if !fresh(item.PublishedAt, maxAge) {
+			continue
+		}
 		key := item.URL
 		if key == "" {
 			key = item.Source + "\n" + item.Title
@@ -95,6 +98,19 @@ func (q *Queue) Next(feeds []Feed) (Item, bool) {
 		return item, true
 	}
 	return Item{}, false
+}
+
+func fresh(value string, maxAge time.Duration) bool {
+	if maxAge <= 0 {
+		return true
+	}
+	for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC3339} {
+		if published, err := time.Parse(layout, value); err == nil {
+			age := time.Since(published)
+			return age >= -15*time.Minute && age <= maxAge
+		}
+	}
+	return false // without a publication date it cannot be called current news
 }
 
 func (q *Queue) prune() {
@@ -275,7 +291,6 @@ func Script(items []Item, language string) string {
 				fmt.Fprintf(&b, "概要では、%s。", item.Description)
 			}
 		}
-		b.WriteString("続いて音楽をどうぞ。")
 		return b.String()
 	}
 	b.WriteString("Latest headlines. ")
@@ -285,6 +300,5 @@ func Script(items []Item, language string) string {
 			fmt.Fprintf(&b, "Summary: %s. ", item.Description)
 		}
 	}
-	b.WriteString("Now, back to the music.")
 	return b.String()
 }

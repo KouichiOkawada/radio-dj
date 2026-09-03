@@ -29,23 +29,24 @@ type Config struct {
 	Bitrate         int
 	Chunk           int
 
-	DJEnabled     bool
-	DJEvery       int    // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
-	DJTalk        string // poco | regular | mucho | verboso — how chatty the director is
-	GLMBaseURL    string
-	GLMAPIKey     string
-	GLMModel      string
-	LLMProvider   string // preset name (glm/openai/openrouter/...)
-	VoiceProvider string // edge-tts | piper | say
-	Voice         string // voice id for the provider
-	VoiceCmd      string // raw override (power users); empty = use provider+voice
-	Bed           string
-	NewsEvery     int
-	NewsFeeds     []NewsFeed
-	NewsBGMPath   string
-	NewsBGMVolume float64
-	Audio         AudioSettings
-	PlayMode      string
+	DJEnabled       bool
+	DJEvery         int    // legacy: soft floor of songs between talks. Cadence is now LLM-driven.
+	DJTalk          string // poco | regular | mucho | verboso — how chatty the director is
+	GLMBaseURL      string
+	GLMAPIKey       string
+	GLMModel        string
+	LLMProvider     string // preset name (glm/openai/openrouter/...)
+	VoiceProvider   string // edge-tts | piper | say
+	Voice           string // voice id for the provider
+	VoiceCmd        string // raw override (power users); empty = use provider+voice
+	Bed             string
+	NewsEvery       int
+	NewsFeeds       []NewsFeed
+	NewsMaxAgeHours int
+	NewsBGMPath     string
+	NewsBGMVolume   float64
+	Audio           AudioSettings
+	PlayMode        string
 
 	LocationName string
 	Latitude     float64
@@ -73,34 +74,35 @@ type AudioSettings struct {
 
 // fileConfig is the onboarding-persisted shape (user-settable fields only).
 type fileConfig struct {
-	Library       string        `json:"library,omitempty"`
-	Source        string        `json:"source,omitempty"`
-	NavidromeURL  string        `json:"navidrome_url,omitempty"`
-	NavidromeUser string        `json:"navidrome_user,omitempty"`
-	NavidromePass string        `json:"navidrome_pass,omitempty"`
-	GLMAPIKey     string        `json:"glm_api_key,omitempty"`
-	GLMBaseURL    string        `json:"glm_base_url,omitempty"`
-	GLMModel      string        `json:"glm_model,omitempty"`
-	LLMProvider   string        `json:"llm_provider,omitempty"`
-	VoiceProvider string        `json:"voice_provider,omitempty"`
-	Voice         string        `json:"voice,omitempty"`
-	VoiceCmd      string        `json:"voice_cmd,omitempty"`
-	Location      string        `json:"location,omitempty"`
-	Latitude      float64       `json:"lat,omitempty"`
-	Longitude     float64       `json:"lon,omitempty"`
-	Language      string        `json:"language,omitempty"`
-	DJEvery       int           `json:"dj_every,omitempty"`
-	DJTalk        string        `json:"dj_talk,omitempty"`
-	Chunk         int           `json:"chunk,omitempty"`
-	Bitrate       int           `json:"bitrate,omitempty"`
-	StationName   string        `json:"station_name,omitempty"`
-	Bed           string        `json:"bed,omitempty"`
-	NewsEvery     int           `json:"news_every,omitempty"`
-	NewsFeeds     []NewsFeed    `json:"news_feeds,omitempty"`
-	NewsBGMPath   string        `json:"news_bgm_path,omitempty"`
-	NewsBGMVolume float64       `json:"news_bgm_volume,omitempty"`
-	Audio         AudioSettings `json:"audio,omitempty"`
-	PlayMode      string        `json:"play_mode,omitempty"`
+	Library         string        `json:"library,omitempty"`
+	Source          string        `json:"source,omitempty"`
+	NavidromeURL    string        `json:"navidrome_url,omitempty"`
+	NavidromeUser   string        `json:"navidrome_user,omitempty"`
+	NavidromePass   string        `json:"navidrome_pass,omitempty"`
+	GLMAPIKey       string        `json:"glm_api_key,omitempty"`
+	GLMBaseURL      string        `json:"glm_base_url,omitempty"`
+	GLMModel        string        `json:"glm_model,omitempty"`
+	LLMProvider     string        `json:"llm_provider,omitempty"`
+	VoiceProvider   string        `json:"voice_provider,omitempty"`
+	Voice           string        `json:"voice,omitempty"`
+	VoiceCmd        string        `json:"voice_cmd,omitempty"`
+	Location        string        `json:"location,omitempty"`
+	Latitude        float64       `json:"lat,omitempty"`
+	Longitude       float64       `json:"lon,omitempty"`
+	Language        string        `json:"language,omitempty"`
+	DJEvery         int           `json:"dj_every,omitempty"`
+	DJTalk          string        `json:"dj_talk,omitempty"`
+	Chunk           int           `json:"chunk,omitempty"`
+	Bitrate         int           `json:"bitrate,omitempty"`
+	StationName     string        `json:"station_name,omitempty"`
+	Bed             string        `json:"bed,omitempty"`
+	NewsEvery       int           `json:"news_every,omitempty"`
+	NewsFeeds       []NewsFeed    `json:"news_feeds,omitempty"`
+	NewsMaxAgeHours int           `json:"news_max_age_hours,omitempty"`
+	NewsBGMPath     string        `json:"news_bgm_path,omitempty"`
+	NewsBGMVolume   float64       `json:"news_bgm_volume,omitempty"`
+	Audio           AudioSettings `json:"audio,omitempty"`
+	PlayMode        string        `json:"play_mode,omitempty"`
 }
 
 // normalizeTalk canonicalizes the talkiness dial to English keys, accepting
@@ -150,6 +152,7 @@ func Load() Config {
 		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
 		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
 		NewsFeeds:       f.NewsFeeds,
+		NewsMaxAgeHours: pickInt("RDJ_NEWS_MAX_AGE_HOURS", f.NewsMaxAgeHours, 72),
 		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
 		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.35),
 		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
