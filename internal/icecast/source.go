@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type Streamer struct {
 	done      chan struct{}
 	closeOnce sync.Once  // Close runs from both defer + reopen — make it idempotent
 	mu        sync.Mutex // guards vw writes
+	writeMu   sync.Mutex // serializes Windows' single PCM input
 	decoderMu sync.Mutex // guards decoder
 	decoder   *exec.Cmd  // in-flight music decoder, nil between songs
 	ffmpeg    string     // resolved ffmpeg binary (launchd has a minimal PATH)
@@ -71,16 +73,27 @@ func OpenStreamer(host string, port int, mount, encoder, sourcePw, name string, 
 	m := codec.MetaFor(encoder)
 	filter := "[0:a][1:a]sidechaincompress=threshold=0.015:ratio=12:attack=5:release=600[d];" +
 		"[d][1:a]amix=inputs=2:duration=first:normalize=0:weights=1 1.3[a]"
-	master := exec.Command(ffmpegBin,
+	args := []string{
 		"-loglevel", "warning",
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:3",
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:4",
-		"-filter_complex", filter,
-		"-map", "[a]",
-		"-c:a", m.Encoder, "-b:a", strconv.Itoa(bitrate)+"k", "-ar", "44100", "-ac", "2",
+		"-filter_complex", filter, "-map", "[a]",
+		"-c:a", m.Encoder, "-b:a", strconv.Itoa(bitrate) + "k", "-ar", "44100", "-ac", "2",
 		"-content_type", m.ContentType, "-f", m.Format, "-ice_name", name,
 		fmt.Sprintf("icecast://source:%s@%s:%d%s", sourcePw, host, port, mount),
-	)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows gets a single stdin input: the producer serializes music and
+		// voice PCM. The Unix build retains its two-input live-ducking graph.
+		args = []string{
+			"-loglevel", "warning",
+			"-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
+			"-c:a", m.Encoder, "-b:a", strconv.Itoa(bitrate) + "k", "-ar", "44100", "-ac", "2",
+			"-content_type", m.ContentType, "-f", m.Format, "-ice_name", name,
+			fmt.Sprintf("icecast://source:%s@%s:%d%s", sourcePw, host, port, mount),
+		}
+	}
+	master := exec.Command(ffmpegBin, args...)
 	mr, mw, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("music pipe: %w", err)
@@ -92,6 +105,13 @@ func OpenStreamer(host string, port int, mount, encoder, sourcePw, name string, 
 		return nil, fmt.Errorf("voice pipe: %w", err)
 	}
 	master.ExtraFiles = []*os.File{mr, vr} // → fd 3 (music), fd 4 (voice)
+	if runtime.GOOS == "windows" {
+		// Go cannot pass ExtraFiles to a Windows child process. Feed the master
+		// through stdin instead; voice clips are serialized into that same PCM
+		// stream (between tracks, or after a track for a requested midroll).
+		master.ExtraFiles = nil
+		master.Stdin = mr
+	}
 	master.Stderr = os.Stderr
 	if err := master.Start(); err != nil {
 		mr.Close()
@@ -100,13 +120,20 @@ func OpenStreamer(host string, port int, mount, encoder, sourcePw, name string, 
 		vw.Close()
 		return nil, fmt.Errorf("master ffmpeg: %w", err)
 	}
+	_ = mr.Close()
+	if runtime.GOOS == "windows" {
+		_ = vr.Close()
+		_ = vw.Close()
+	}
 	s := &Streamer{
 		master: master, w: mw, vw: vw,
 		voiceQ: make(chan []byte, 8),
 		done:   make(chan struct{}),
 		ffmpeg: ffmpegBin,
 	}
-	go s.voiceFeeder()
+	if runtime.GOOS != "windows" {
+		go s.voiceFeeder()
+	}
 	return s, nil
 }
 
@@ -149,7 +176,11 @@ func (s *Streamer) Play(segment string) error {
 	dec := exec.Command(s.ffmpeg,
 		"-loglevel", "error", "-re", "-i", segment,
 		"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1")
-	dec.Stdout = s.w
+	if runtime.GOOS == "windows" {
+		dec.Stdout = lockedPCMWriter{s: s}
+	} else {
+		dec.Stdout = s.w
+	}
 	dec.Stderr = os.Stderr
 	if err := dec.Start(); err != nil {
 		return err
@@ -198,12 +229,28 @@ func (s *Streamer) Interject(voiceFile string) error {
 	if len(pcm) == 0 {
 		return fmt.Errorf("voice decode produced no PCM")
 	}
+	if runtime.GOOS == "windows" {
+		_, err := s.writePCM(pcm)
+		return err
+	}
 	select {
 	case s.voiceQ <- pcm:
 		return nil
 	default:
 		return fmt.Errorf("voice queue full — interject skipped")
 	}
+}
+
+// lockedPCMWriter makes Windows' one stdin PCM stream safe when a midroll
+// completes while a decoder is still writing music.
+type lockedPCMWriter struct{ s *Streamer }
+
+func (w lockedPCMWriter) Write(p []byte) (int, error) { return w.s.writePCM(p) }
+
+func (s *Streamer) writePCM(p []byte) (int, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return s.w.Write(p)
 }
 
 // Alive reports whether the master is still running.
@@ -218,7 +265,9 @@ func (s *Streamer) Close() {
 	s.closeOnce.Do(func() {
 		close(s.done)
 		_ = s.w.Close()
-		_ = s.vw.Close()
+		if runtime.GOOS != "windows" {
+			_ = s.vw.Close()
+		}
 		_ = s.master.Wait()
 	})
 }
