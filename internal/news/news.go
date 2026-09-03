@@ -160,6 +160,80 @@ func (q *Queue) ReserveItems(items []Item, maxAge time.Duration) (Item, bool) {
 	return Item{}, false
 }
 
+// ReserveBulletin selects a balanced, deterministic set from a collector
+// snapshot. FULL NEWS prefers finance, general and Hokkaido in that order;
+// FLASH is intentionally short and only accepts stories from the last 30
+// minutes. Reservation is still in-memory until audio actually airs.
+func (q *Queue) ReserveBulletin(items []Item, kind ProgramKind) []Item {
+	if len(items) == 0 {
+		return nil
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.pruneReservations()
+
+	limit := 3
+	maxAge := 6 * time.Hour
+	if kind == ProgramFlash {
+		limit, maxAge = 2, 30*time.Minute
+	}
+	usedSource := map[string]int{}
+	usedTitle := map[string]bool{}
+	selected := make([]Item, 0, limit)
+	pick := func(category string, age time.Duration) {
+		if len(selected) >= limit {
+			return
+		}
+		for _, item := range items {
+			itemCategory := strings.ToLower(strings.TrimSpace(item.Category))
+			if itemCategory == "" {
+				itemCategory = "general"
+			}
+			if category != "" && itemCategory != category {
+				continue
+			}
+			if !fresh(item.PublishedAt, age) || usedSource[item.Source] >= 2 {
+				continue
+			}
+			key := itemKey(item)
+			titleKey := normalizeTitle(item.Title)
+			if _, aired := q.seen[key]; aired || q.reserved[key].IsZero() == false || usedTitle[titleKey] {
+				continue
+			}
+			q.reserve(item)
+			usedSource[item.Source]++
+			usedTitle[titleKey] = true
+			selected = append(selected, item)
+			return
+		}
+	}
+	if kind == ProgramFull || kind == ProgramMorningMarket || kind == ProgramTokyoClose {
+		pick("finance", 4*time.Hour)
+		pick("general", 6*time.Hour)
+		pick("hokkaido", 12*time.Hour)
+	} else {
+		pick("", maxAge)
+		pick("", maxAge)
+	}
+	// Never pad with old news just to hit a quota. A fresh diverse story is a
+	// valid replacement when a category has no candidate.
+	for len(selected) < limit {
+		before := len(selected)
+		pick("", maxAge)
+		if len(selected) == before {
+			break
+		}
+	}
+	return selected
+}
+
+var titleNoise = regexp.MustCompile(`[\s\p{P}\p{S}]+`)
+
+func normalizeTitle(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	return titleNoise.ReplaceAllString(s, "")
+}
+
 func itemKey(item Item) string {
 	if strings.TrimSpace(item.URL) != "" {
 		return strings.TrimSpace(item.URL)

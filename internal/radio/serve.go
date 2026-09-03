@@ -35,17 +35,18 @@ import (
 
 // Segment is one item fed to the streamer: a DJ voice clip or a music track.
 type Segment struct {
-	Path     string
-	IsVoice  bool
-	IsNews   bool
-	IsDJ     bool
-	News     *news.Item
-	Program  *news.ProgramSlot // non-nil for the scheduled slot this bulletin fulfils
-	LiveTime bool              // voice generated at air-time (clock skill) — no pre-baked Path
-	Midroll  bool              // voice fires mid-song (~50%), not at the start
-	Meta     library.Track     // valid when !IsVoice
-	Text     string            // DJ speech text — logged at air-time, not build-time
-	Req      string            // request text that matched this track — air-time log
+	Path      string
+	IsVoice   bool
+	IsNews    bool
+	IsDJ      bool
+	News      *news.Item
+	NewsItems []news.Item
+	Program   *news.ProgramSlot // non-nil for the scheduled slot this bulletin fulfils
+	LiveTime  bool              // voice generated at air-time (clock skill) — no pre-baked Path
+	Midroll   bool              // voice fires mid-song (~50%), not at the start
+	Meta      library.Track     // valid when !IsVoice
+	Text      string            // DJ speech text — logged at air-time, not build-time
+	Req       string            // request text that matched this track — air-time log
 }
 
 type preparedTanda struct {
@@ -131,8 +132,8 @@ func Serve(cfg config.Config) error {
 	// complete audio breaks while music is already available, so mode switches
 	// and track starts never wait on RSS, OGP, Ollama, edge-tts, or ffmpeg.
 	news.StartCollectors(collectorCtx, newsStore, toNewsFeeds(cfg.NewsFeeds))
-	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, st)
 	programClock := news.NewProgramClock()
+	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
 
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
@@ -431,7 +432,11 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
 	addNews := func(slot *news.ProgramSlot) bool {
-		prepared, ok := newsPrep.tryTake()
+		kind := news.ProgramKind("")
+		if slot != nil {
+			kind = slot.Kind
+		}
+		prepared, ok := newsPrep.tryTake(kind)
 		if !ok {
 			return false
 		}

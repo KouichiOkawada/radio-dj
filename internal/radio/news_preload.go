@@ -18,22 +18,29 @@ import (
 // TTS, optional news-bed mix, and (when available) the grounded AI-DJ reaction.
 // Playback therefore never waits for RSS, Ollama, edge-tts, or ffmpeg.
 type newsPreloader struct {
-	ready   chan []Segment
+	ready   chan preparedNews
 	status  *status.Server
 	queue   *news.Queue
 	store   *news.Store
+	clock   *news.ProgramClock
 	enabled bool
 }
 
-const newsStockSize = 4
+type preparedNews struct {
+	kind     news.ProgramKind
+	segments []Segment
+}
 
-func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, st *status.Server) *newsPreloader {
+const newsStockSize = 1
+
+func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock, st *status.Server) *newsPreloader {
 	p := &newsPreloader{
-		ready:   make(chan []Segment, newsStockSize),
+		ready:   make(chan preparedNews, newsStockSize),
 		status:  st,
 		queue:   queue,
 		store:   store,
-		enabled: vox != nil && queue != nil && store != nil && len(cfg.NewsFeeds) > 0,
+		clock:   clock,
+		enabled: vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
 	}
 	if !p.enabled {
 		st.SetNewsReadiness(false, 0, "unavailable")
@@ -41,7 +48,7 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 	}
 
 	st.SetNewsReadiness(false, 0, "loading")
-	go p.run(cfg, djx, vox, queue, store)
+	go p.run(cfg, djx, vox, queue, store, clock)
 	return p
 }
 
@@ -53,7 +60,7 @@ func (p *newsPreloader) publish(state string) {
 	p.status.SetNewsReadiness(count > 0, count, state)
 }
 
-func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store) {
+func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock) {
 	for {
 		// Keep several complete breaks ready while music, news, or DJ commentary
 		// is on air. Four items cover normal local LLM/TTS latency without letting
@@ -65,19 +72,24 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		}
 
 		p.publish("loading")
-		item, ok := queue.ReserveItems(store.Snapshot(), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
-		if !ok {
+		slot := clock.Next(time.Now())
+		items := queue.ReserveBulletin(store.Snapshot(), slot.Kind)
+		if len(items) == 0 {
 			// Quiet feeds are normal. Keep music on air and poll again later.
 			p.publish("waiting")
 			time.Sleep(30 * time.Second)
 			continue
 		}
 
-		news.ResolveImage(&item)
-		bulletin := strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
+		for i := range items {
+			news.ResolveImage(&items[i])
+		}
+		bulletin := strings.TrimSpace(news.Script(items, cfg.Language))
 		if bulletin == "" {
-			log.Printf("[news] preload skipped empty bulletin: %s", item.Title)
-			queue.Release(item)
+			log.Printf("[news] preload skipped empty bulletin")
+			for _, item := range items {
+				queue.Release(item)
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -85,7 +97,9 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		speechPath, err := vox.Speak(bulletin)
 		if err != nil {
 			log.Printf("[news] preload TTS: %v", err)
-			queue.Release(item)
+			for _, item := range items {
+				queue.Release(item)
+			}
 			p.publish("loading")
 			time.Sleep(5 * time.Second)
 			continue
@@ -99,13 +113,13 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			mixedPath = speechPath
 		}
 
-		segments := []Segment{{Path: mixedPath, IsNews: true, News: &item, Text: bulletin}}
+		segments := []Segment{{Path: mixedPath, IsNews: true, News: &items[0], NewsItems: items, Text: bulletin}}
 
 		// The commentary is opinion/personality only. It is grounded on the RSS
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
 		if djx != nil {
-			comment := strings.TrimSpace(djx.NewsComment(item.Source, item.Title, item.Description))
+			comment := strings.TrimSpace(djx.NewsComment(items[0].Source, items[0].Title, items[0].Description))
 			if comment == "" {
 				comment = "この話題、これからどう動くのか気になりますね。続報も確認していきたいところです。"
 			}
@@ -123,8 +137,8 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			}
 		}
 
-		p.ready <- segments
-		log.Printf("[news] READY %d/%d: %s", len(p.ready), cap(p.ready), item.Title)
+		p.ready <- preparedNews{kind: slot.Kind, segments: segments}
+		log.Printf("[news] READY %s %d/%d: %s", slot.Kind, len(p.ready), cap(p.ready), items[0].Title)
 		p.publish("ready")
 	}
 }
@@ -135,7 +149,13 @@ func (p *newsPreloader) markAired(seg Segment) {
 	if p == nil || p.queue == nil || seg.News == nil {
 		return
 	}
-	p.queue.MarkAired(*seg.News)
+	if len(seg.NewsItems) > 0 {
+		for _, item := range seg.NewsItems {
+			p.queue.MarkAired(item)
+		}
+	} else {
+		p.queue.MarkAired(*seg.News)
+	}
 }
 
 // releaseSegments returns any reserved story from a discarded prefetched
@@ -146,7 +166,13 @@ func (p *newsPreloader) releaseSegments(segments []Segment) {
 	}
 	for _, seg := range segments {
 		if seg.IsNews && seg.News != nil {
-			p.queue.Release(*seg.News)
+			if len(seg.NewsItems) > 0 {
+				for _, item := range seg.NewsItems {
+					p.queue.Release(item)
+				}
+			} else {
+				p.queue.Release(*seg.News)
+			}
 		}
 	}
 }
@@ -154,18 +180,25 @@ func (p *newsPreloader) releaseSegments(segments []Segment) {
 // tryTake is intentionally non-blocking. Radio mode simply carries on with
 // music when no rendered bulletin is ready yet; news-only mode uses its normal
 // music fallback while the preloader catches up.
-func (p *newsPreloader) tryTake() ([]Segment, bool) {
+func (p *newsPreloader) tryTake(kind news.ProgramKind) ([]Segment, bool) {
 	if p == nil || !p.enabled {
 		return nil, false
 	}
 	select {
-	case segments := <-p.ready:
+	case prepared := <-p.ready:
+		if kind != "" && prepared.kind != kind {
+			// This can only happen after a mode switch or a just-expired slot.
+			// Return it to the candidate pool rather than playing the wrong format.
+			p.releaseSegments(prepared.segments)
+			p.publish("loading")
+			return nil, false
+		}
 		if len(p.ready) > 0 {
 			p.publish("ready")
 		} else {
 			p.publish("loading")
 		}
-		return segments, true
+		return prepared.segments, true
 	default:
 		p.publish("loading")
 		return nil, false

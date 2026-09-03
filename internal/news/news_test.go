@@ -52,3 +52,34 @@ func TestReserveMarksSeenOnlyAfterAiring(t *testing.T) {
 		t.Fatalf("released story was not selectable again: %#v, %v", again, ok)
 	}
 }
+
+func TestReserveBulletinBalancesFullNews(t *testing.T) {
+	now := time.Now()
+	q := NewQueue(t.TempDir())
+	items := []Item{
+		{Source: "market", Category: "finance", Title: "市場", URL: "https://example.test/market", PublishedAt: now.Format(time.RFC1123Z)},
+		{Source: "top", Category: "general", Title: "国内", URL: "https://example.test/top", PublishedAt: now.Add(-time.Minute).Format(time.RFC1123Z)},
+		{Source: "sapporo", Category: "hokkaido", Title: "札幌", URL: "https://example.test/sapporo", PublishedAt: now.Add(-2 * time.Minute).Format(time.RFC1123Z)},
+	}
+	got := q.ReserveBulletin(items, ProgramFull)
+	if len(got) != 3 {
+		t.Fatalf("got %d items, want 3: %#v", len(got), got)
+	}
+	seen := map[string]bool{}
+	for _, item := range got {
+		seen[item.Category] = true
+	}
+	for _, category := range []string{"finance", "general", "hokkaido"} {
+		if !seen[category] {
+			t.Fatalf("missing %s in %#v", category, got)
+		}
+	}
+}
+
+func TestReserveBulletinFlashRejectsOldItems(t *testing.T) {
+	q := NewQueue(t.TempDir())
+	got := q.ReserveBulletin([]Item{{Source: "top", Title: "old", URL: "https://example.test/old", PublishedAt: time.Now().Add(-31 * time.Minute).Format(time.RFC1123Z)}}, ProgramFlash)
+	if len(got) != 0 {
+		t.Fatalf("old item selected for flash: %#v", got)
+	}
+}
