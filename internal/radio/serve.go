@@ -45,6 +45,11 @@ type Segment struct {
 	Req      string        // request text that matched this track — air-time log
 }
 
+type preparedTanda struct {
+	mode string
+	segs []Segment
+}
+
 // djLogPath is set in Serve(); logDJ appends DJ speech, requests and the
 // spoken clock to it so /dj-log can surface what aired (the feedback view).
 var djLogPath string
@@ -94,14 +99,7 @@ func Serve(cfg config.Config) error {
 	st := status.New(cfg.StateDir, cfg.NeedsSetup(), cfg.IcecastMount)
 	st.SetLanguage(cfg.Language)
 	modes := newPlaybackMode(cfg.PlayMode)
-	st.SetModeHandler(cfg.PlayMode, func(mode string) bool {
-		if err := config.SavePlaybackMode(cfg.StateDir, mode); err != nil {
-			log.Printf("[mode] save: %v", err)
-			return false
-		}
-		modes.Set(mode)
-		return true
-	})
+	newsQueue := news.NewQueue(cfg.StateDir)
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
 	log.Printf("[radio-dj] UI :%d · stream :%d/stream.aac · POST /request", cfg.StatusPort, cfg.IcecastPort)
@@ -165,6 +163,17 @@ func Serve(cfg config.Config) error {
 		controls <- action
 		return true
 	})
+	st.SetModeHandler(cfg.PlayMode, func(mode string) bool {
+		if err := config.SavePlaybackMode(cfg.StateDir, mode); err != nil {
+			log.Printf("[mode] save: %v", err)
+			return false
+		}
+		modes.Set(mode)
+		// Cut the current decoder so the consumer drops the old tanda and
+		// begins the newly selected mode without waiting for a whole song.
+		_ = streamer.SkipCurrent()
+		return true
+	})
 	st.MarkPlaying(true)
 	log.Printf("[radio-dj] source persistente ON AIR ✓")
 
@@ -205,25 +214,30 @@ func Serve(cfg config.Config) error {
 	}()
 
 	// Producer: prefetch tandas so the master never starves.
-	prepared := make(chan []Segment, 2)
+	prepared := make(chan preparedTanda, 2)
 	go func() {
 		tc := 0
 		for {
-			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, modes.Get(), &tc)
+			mode := modes.Get()
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsQueue, &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
 				time.Sleep(10 * time.Second)
 				continue
 			}
 			log.Printf("[radio-dj] tanda lista (%d segmentos%s) — prefetched", len(segs), reqs)
-			prepared <- segs
+			prepared <- preparedTanda{mode: mode, segs: segs}
 		}
 	}()
 
 	// Consumer: play each tanda as it arrives; the next is already being built.
 	var previousTrack *Segment
 	tandaN := 0
-	for segs := range prepared {
+	for batch := range prepared {
+		if batch.mode != modes.Get() {
+			continue // stale prefetch from before a mode switch
+		}
+		segs := batch.segs
 		tandaN++
 		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
 		pendingVoicePath := ""
@@ -232,6 +246,9 @@ func Serve(cfg config.Config) error {
 		pendingMidrollText := ""
 		pendingLiveTime := false
 		for i, seg := range segs {
+			if batch.mode != modes.Get() {
+				break // mode changed while this tanda was on air
+			}
 			if seg.IsNews {
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
@@ -371,7 +388,7 @@ func Serve(cfg config.Config) error {
 // buildTanda returns the ordered segments for one batch (requested songs
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
-func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, trackCount *int) (segs []Segment, reqs string, err error) {
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsQueue *news.Queue, trackCount *int) (segs []Segment, reqs string, err error) {
 	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
@@ -390,14 +407,12 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		if vox == nil || len(cfg.NewsFeeds) == 0 {
 			return false
 		}
-		items := news.Fetch(toNewsFeeds(cfg.NewsFeeds))
-		if len(items) > 0 {
-			news.ResolveImage(&items[0])
-		}
-		bulletin := news.Script(items, cfg.Language)
-		if bulletin == "" {
+		item, ok := newsQueue.Next(toNewsFeeds(cfg.NewsFeeds))
+		if !ok {
 			return false
 		}
+		news.ResolveImage(&item)
+		bulletin := news.Script([]news.Item{item}, cfg.Language)
 		vf, verr := vox.Speak(bulletin)
 		if verr != nil {
 			log.Printf("[news] TTS: %v", verr)
@@ -408,7 +423,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			log.Printf("[news] skipped: %v", merr)
 			return false
 		}
-		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &items[0], Text: bulletin})
+		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &item, Text: bulletin})
 		return true
 	}
 	if mode == "news" {

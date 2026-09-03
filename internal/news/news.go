@@ -4,6 +4,7 @@
 package news
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html"
@@ -60,6 +61,61 @@ type Item struct {
 	ImageURL    string
 }
 
+// Queue selects unseen items across every configured feed and remembers them
+// in the station state directory. It deliberately does not recycle an item
+// just because a feed has not published something new yet.
+type Queue struct {
+	path string
+	seen map[string]time.Time
+	mu   sync.Mutex
+}
+
+func NewQueue(stateDir string) *Queue {
+	q := &Queue{path: filepath.Join(stateDir, "news-seen.json"), seen: map[string]time.Time{}}
+	if b, err := os.ReadFile(q.path); err == nil {
+		_ = json.Unmarshal(b, &q.seen)
+	}
+	return q
+}
+
+func (q *Queue) Next(feeds []Feed) (Item, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, item := range Fetch(feeds) {
+		key := item.URL
+		if key == "" {
+			key = item.Source + "\n" + item.Title
+		}
+		if _, played := q.seen[key]; played {
+			continue
+		}
+		q.seen[key] = time.Now()
+		q.prune()
+		q.save()
+		return item, true
+	}
+	return Item{}, false
+}
+
+func (q *Queue) prune() {
+	if len(q.seen) <= 1000 {
+		return
+	}
+	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	for key, aired := range q.seen {
+		if aired.Before(cutoff) {
+			delete(q.seen, key)
+		}
+	}
+}
+
+func (q *Queue) save() {
+	b, err := json.MarshalIndent(q.seen, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(q.path, b, 0o644)
+	}
+}
+
 type document struct {
 	Channel struct {
 		Items []entry `xml:"item"`
@@ -84,7 +140,7 @@ type media struct {
 	Type string `xml:"type,attr"`
 }
 
-// Fetch returns up to two recent, distinct entries per feed. A failed feed is
+// Fetch returns recent, distinct entries across feeds. A failed feed is
 // skipped so news trouble can never stop music playback.
 func Fetch(feeds []Feed) []Item {
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -136,7 +192,7 @@ func Fetch(feeds []Feed) []Item {
 				image = e.Enclosure.URL
 			}
 			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published, ImageURL: image})
-			if len(out) >= 4 {
+			if len(out) >= 80 {
 				return out
 			}
 		}
