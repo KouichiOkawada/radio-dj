@@ -1,6 +1,7 @@
 package status
 
 import (
+	"bytes"
 	_ "embed"
 	"html/template"
 	"net/http"
@@ -25,6 +26,9 @@ var manifestJSON []byte
 
 //go:embed templates/sw.js
 var swJS []byte
+
+//go:embed templates/news-readiness.js
+var newsReadinessJS []byte
 
 //go:embed templates/icon.svg
 var iconSVG []byte
@@ -83,8 +87,19 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		StreamPath:   strings.TrimPrefix(s.mount, "/"),
 		I18n:         ui,
 	}
+
+	// Keep the large legacy player template untouched while this enhancement is
+	// still being validated. Inject one same-origin script after rendering; it
+	// only controls news readiness/disabled state and can later be folded into a
+	// modular UI without rewriting the cassette player.
+	var page bytes.Buffer
+	if err := indexTmpl.Execute(&page, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	html := strings.Replace(page.String(), "</body>", `<script src="/news-readiness.js"></script></body>`, 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = indexTmpl.Execute(w, data)
+	_, _ = w.Write([]byte(html))
 }
 
 // serveFont serves the self-hosted Permanent Marker woff2 (30KB) with a
@@ -108,6 +123,7 @@ func serveStatic(ct string, b []byte) http.HandlerFunc {
 func registerPWA(mux *http.ServeMux) {
 	mux.HandleFunc("/manifest.json", serveStatic("application/manifest+json", manifestJSON))
 	mux.HandleFunc("/sw.js", serveStatic("application/javascript", swJS))
+	mux.HandleFunc("/news-readiness.js", serveStatic("application/javascript; charset=utf-8", newsReadinessJS))
 	mux.HandleFunc("/icon.svg", serveStatic("image/svg+xml", iconSVG))
 	mux.HandleFunc("/icon-192.png", serveStatic("image/png", icon192))
 	mux.HandleFunc("/icon-512.png", serveStatic("image/png", icon512))
