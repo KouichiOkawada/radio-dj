@@ -128,7 +128,11 @@ func Load() Config {
 		StatusPort:      getint("RDJ_STATUS_PORT", 7710),
 		StateDir:        getenv("RDJ_STATE_DIR", dir),
 	}
-	c.DJEnabled = c.GLMAPIKey != "" && (c.VoiceCmd != "" || c.VoiceProvider != "")
+	// Ollama runs locally and does not require an API key. Other providers keep
+	// the existing key requirement so an accidental cloud configuration cannot
+	// make unauthenticated requests.
+	llmReady := c.GLMAPIKey != "" || strings.EqualFold(c.LLMProvider, "ollama")
+	c.DJEnabled = llmReady && (c.VoiceCmd != "" || c.VoiceProvider != "")
 	return c
 }
 
@@ -139,7 +143,7 @@ func (c Config) NeedsSetup() bool {
 	if _, err := os.Stat(filepath.Join(c.StateDir, "config.json")); err == nil {
 		return false
 	}
-	if c.GLMAPIKey == "" {
+	if c.GLMAPIKey == "" && !strings.EqualFold(c.LLMProvider, "ollama") {
 		return true
 	}
 	return c.VoiceProvider == "" && c.VoiceCmd == ""

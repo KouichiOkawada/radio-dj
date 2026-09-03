@@ -54,9 +54,9 @@ type (
 	}
 	// Break is the talk the director schedules for a setlist position.
 	Break struct {
-		Before int    `json:"before"`           // index into setlist
-		Kind   string `json:"kind"`             // intro|trivia|wiki|history|station|time|none
-		At     string `json:"at,omitempty"`     // "before" (default) | "mid"
+		Before int    `json:"before"`       // index into setlist
+		Kind   string `json:"kind"`         // intro|trivia|wiki|history|station|time|none
+		At     string `json:"at,omitempty"` // "before" (default) | "mid"
 	}
 	// Plan is the director's output: an ordered setlist + talk breaks.
 	Plan struct {
@@ -212,7 +212,9 @@ func (d *DJ) complete(user string, search bool) string {
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	if d.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -257,7 +259,9 @@ func (d *DJ) completeJSON(system, user string) string {
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	if d.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

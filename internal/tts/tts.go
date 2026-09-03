@@ -6,15 +6,17 @@ package tts
 
 import (
 	"fmt"
+	"runtime"
+	"strconv"
 	"strings"
 )
 
 // Provider is a known TTS backend.
 type Provider struct {
-	ID      string   // "edge-tts"
-	Label   string   // "Microsoft Edge TTS"
-	Voices  []Voice  // a curated starter list; users can type any
-	Comment string   // install hint
+	ID      string  // "edge-tts"
+	Label   string  // "Microsoft Edge TTS"
+	Voices  []Voice // a curated starter list; users can type any
+	Comment string  // install hint
 }
 
 // Voice is one selectable voice for a provider.
@@ -89,5 +91,8 @@ func BuildCommand(provider, voice, text, outFile string) (string, error) {
 }
 
 func quote(s string) string {
+	if runtime.GOOS == "windows" {
+		return strconv.Quote(s)
+	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
