@@ -691,6 +691,22 @@
   function saveState(){ try{ localStorage.setItem('rdj_side', sideA?'A':'B'); localStorage.setItem('rdj_batch', String(batchIdx)); }catch(_){} }
   const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmt = s => { s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+  // SVG labels have a fixed physical width. Character count alone cannot keep
+  // Japanese strings inside the paper label, so use their rendered width.
+  function setSvgFittedText(id, value, maxWidth){
+    const el = $(id), full = value || '—';
+    el.textContent = full;
+    if(typeof el.getComputedTextLength !== 'function' || el.getComputedTextLength() <= maxWidth) return;
+    let lo = 0, hi = full.length, best = '';
+    while(lo <= hi){
+      const mid = Math.floor((lo + hi) / 2);
+      const candidate = full.slice(0, mid).trimEnd() + '…';
+      el.textContent = candidate;
+      if(el.getComputedTextLength() <= maxWidth){ best = candidate; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    el.textContent = best || '…';
+  }
 
   function applyNowPlaying(j){
     const c = j.current||{};
@@ -730,6 +746,12 @@
       releaseSkipKey(); // a latched skip key just finished its job
     }
     metaTitle = c.title||''; metaArtist = c.artist||'';
+    requestAnimationFrame(()=>{
+      setSvgFittedText('paper-title', c.title || '', 195);
+      setSvgFittedText('paper-artist', [c.artist, c.album, c.year].filter(Boolean).join(' · '), 195);
+      const nextLabel = j.next ? [j.next.title, j.next.artist].filter(Boolean).join(' · ') : '';
+      setSvgFittedText('paper-next', nextLabel, 185);
+    });
     const clip = (s,n)=> s && s.length>n ? s.slice(0,n-1).trimEnd()+'…' : (s||'');
     $('paper-title').textContent  = clip(metaTitle,24) || '—';
     // Artist · Album · Year — only include non-empty parts
