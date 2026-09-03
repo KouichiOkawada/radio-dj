@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -73,6 +74,14 @@ type entry struct {
 	Link        string `xml:"link"`
 	PubDate     string `xml:"pubDate"`
 	Published   string `xml:"published"`
+	Enclosure   media  `xml:"enclosure"`
+	Media       media  `xml:"content"`
+	Thumbnail   media  `xml:"thumbnail"`
+}
+
+type media struct {
+	URL  string `xml:"url,attr"`
+	Type string `xml:"type,attr"`
 }
 
 // Fetch returns up to two recent, distinct entries per feed. A failed feed is
@@ -119,13 +128,61 @@ func Fetch(feeds []Feed) []Item {
 			if published == "" {
 				published = clean(e.Published)
 			}
-			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published})
+			image := e.Media.URL
+			if image == "" {
+				image = e.Thumbnail.URL
+			}
+			if image == "" && strings.HasPrefix(e.Enclosure.Type, "image/") {
+				image = e.Enclosure.URL
+			}
+			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published, ImageURL: image})
 			if len(out) >= 4 {
 				return out
 			}
 		}
 	}
 	return out
+}
+
+var imageCache = struct {
+	sync.Mutex
+	m map[string]string
+}{m: map[string]string{}}
+
+var ogImage = regexp.MustCompile(`(?is)<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']`)
+var ogImageReverse = regexp.MustCompile(`(?is)<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["']`)
+
+// ResolveImage prefers RSS media fields, then makes one bounded OGP request
+// for the article. Failures leave ImageURL empty; no placeholder is invented.
+func ResolveImage(item *Item) {
+	if item == nil || item.ImageURL != "" || !strings.HasPrefix(item.URL, "http") {
+		return
+	}
+	imageCache.Lock()
+	if cached, ok := imageCache.m[item.URL]; ok {
+		item.ImageURL = cached
+		imageCache.Unlock()
+		return
+	}
+	imageCache.Unlock()
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(item.URL)
+	if err != nil {
+		return
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	match := ogImage.FindSubmatch(body)
+	if len(match) < 2 {
+		match = ogImageReverse.FindSubmatch(body)
+	}
+	if len(match) < 2 {
+		return
+	}
+	item.ImageURL = html.UnescapeString(string(match[1]))
+	imageCache.Lock()
+	imageCache.m[item.URL] = item.ImageURL
+	imageCache.Unlock()
 }
 
 var tags = regexp.MustCompile(`<[^>]*>`)

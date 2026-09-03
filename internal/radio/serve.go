@@ -391,6 +391,9 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 			return false
 		}
 		items := news.Fetch(toNewsFeeds(cfg.NewsFeeds))
+		if len(items) > 0 {
+			news.ResolveImage(&items[0])
+		}
 		bulletin := news.Script(items, cfg.Language)
 		if bulletin == "" {
 			return false
