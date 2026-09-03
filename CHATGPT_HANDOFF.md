@@ -1,5 +1,23 @@
 # radio-dj Windows 化：ChatGPT 引き継ぎ資料
 
+## Latest handoff — 2026-09-03
+
+- Branch: `feature/news-radio`; GitHub was fetched through `81e292b`, then
+  `dead1ef fix: start radio music without waiting for Ollama` was added and pushed.
+- `internal/radio/news_preload.go` prepares RSS → image → Japanese TTS →
+  existing-library BGM mix → grounded DJ reaction in a background READY queue.
+  `/now-playing` exposes `news_ready`, `news_ready_count`, and `news_state`.
+- Windows is currently running `radio-dj-new.exe serve`, Icecast, and ffmpeg.
+  UI: `http://127.0.0.1:7710`; stream: `/stream.mp3`.
+- Latest verification: radio mode immediately selected a local track;
+  `http://127.0.0.1:7702/stream.mp3` returned HTTP 200 and `ffprobe` reported MP3.
+- Do not wait for `qwen3.5:4b` / Ollama before the first music batch.
+- `news_state` was `loading` with zero READY items because `news-seen.json`
+  had consumed the available fresh 72-hour RSS items. Radio must keep playing
+  music; do not delete user music or relabel stale news as fresh.
+- Windows Icecast recovery: `9c4812e` waits after killing a dead master ffmpeg,
+  allowing the reopen path to run instead of looping on Broken pipe.
+
 ## 目的
 
 Windows PC 上で、ローカル音楽ファイルを連続再生しながら、AI DJ の日本語コメントと RSS ニュースを挟む個人用ラジオを作る。
