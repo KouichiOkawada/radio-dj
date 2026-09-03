@@ -486,9 +486,9 @@ func Fetch(feeds []Feed) []Item {
 			}
 			out = append(out, Item{Source: feed.Name, Category: feed.Category, Title: title, Description: truncate(desc, 180), URL: url, PublishedAt: published, ImageURL: image})
 			added++
-			// Keep one high-volume feed from consuming unbounded work while still
-			// taking enough candidates to find the globally freshest entry.
-			if added >= 20 {
+			// Keep one high-volume feed bounded, but retain enough candidates for
+			// News Continuous to run for hours without exhausting a busy source.
+			if added >= 100 {
 				break
 			}
 		}

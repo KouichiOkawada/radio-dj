@@ -32,6 +32,7 @@ type newsPreloader struct {
 	priority     string
 	source       string
 	sources      map[string]bool
+	wake         chan struct{}
 	generation   atomic.Uint64
 	readyStories atomic.Int32
 }
@@ -52,6 +53,7 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 		store:   store,
 		clock:   clock,
 		sources: map[string]bool{},
+		wake:    make(chan struct{}, 1),
 		enabled: vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
 	}
 	for _, feed := range cfg.NewsFeeds {
@@ -87,7 +89,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		// can switch its article card exactly when the next story begins.
 		if len(p.ready) >= cap(p.ready) {
 			p.publish("ready")
-			time.Sleep(2 * time.Second)
+			p.wait(2 * time.Second)
 			continue
 		}
 
@@ -118,7 +120,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		if len(items) == 0 {
 			// Quiet feeds are normal. Keep music on air and poll again later.
 			p.publish("waiting")
-			time.Sleep(30 * time.Second)
+			p.wait(30 * time.Second)
 			continue
 		}
 
@@ -157,7 +159,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 				queue.Release(item)
 			}
 			p.publish("loading")
-			time.Sleep(5 * time.Second)
+			p.wait(5 * time.Second)
 			continue
 		}
 
@@ -233,6 +235,30 @@ func (p *newsPreloader) Source() string {
 	return p.source
 }
 
+// Wake cancels the preloader's idle polling delay. Mode and filter changes use
+// it so a request for News Continuous starts preparing immediately rather than
+// waiting up to 30 seconds for the next scheduled poll.
+func (p *newsPreloader) Wake() {
+	if p == nil || !p.enabled {
+		return
+	}
+	select {
+	case p.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (p *newsPreloader) wait(delay time.Duration) {
+	if p == nil || p.wake == nil {
+		time.Sleep(delay)
+		return
+	}
+	select {
+	case <-time.After(delay):
+	case <-p.wake:
+	}
+}
+
 func (p *newsPreloader) SetPriority(category string) bool {
 	category = strings.ToLower(strings.TrimSpace(category))
 	switch category {
@@ -261,6 +287,7 @@ func (p *newsPreloader) SetSource(source string) bool {
 
 func (p *newsPreloader) invalidateReady() {
 	p.generation.Add(1)
+	p.Wake()
 	for {
 		select {
 		case prepared := <-p.ready:

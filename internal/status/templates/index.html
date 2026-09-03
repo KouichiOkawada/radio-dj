@@ -774,7 +774,7 @@
     const box = $('dj-text');
     if(!djCaptionText){
       avatar.classList.remove('talking');
-      box.textContent = 'ただいま音楽をお届けしています。次のトークを準備中です。';
+      box.textContent = '音楽を再生中です。AI DJが話すと、ここに内容を表示します。';
       return;
     }
     const chunks = djCaptionText.match(/.{1,54}(?:[。！？、]|$)/gu) || [djCaptionText];
@@ -807,7 +807,7 @@
     const hasNews = !!shownNews.title;
     $('news-kicker').textContent = c.type === 'news'
       ? 'NEWS · BGM ON AIR'
-      : (hasNews && j.news_ready ? 'NEXT NEWS · 放送準備済み' : (hasNews ? 'NEWS DESK · AI解説を準備中' : 'NEWS DESK · ニュースを収集中'));
+      : (hasNews && j.news_ready ? 'NEXT NEWS · 放送準備済み' : (hasNews ? 'NEWS DESK · 次のニュース音声を準備中' : (j.news_state === 'waiting' ? 'NEWS DESK · 新しいニュースを待っています' : 'NEWS DESK · ニュースを収集中')));
     if(hasNews){
       $('news-title').textContent = shownNews.title || 'ニュース';
       const categoryNames = {stock:'株式',finance:'経済',general:'一般',hokkaido:'北海道',tech:'テック'};

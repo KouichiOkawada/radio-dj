@@ -25,3 +25,19 @@ func TestMayInterruptForNewsOnlyInContinuousOrDueRadioSlot(t *testing.T) {
 		t.Fatal("music-only mode must never be interrupted by news")
 	}
 }
+
+func TestNewsPreloaderWakeCancelsPollingDelay(t *testing.T) {
+	p := &newsPreloader{enabled: true, wake: make(chan struct{}, 1)}
+	done := make(chan struct{})
+	go func() {
+		p.wait(5 * time.Second)
+		close(done)
+	}()
+	time.Sleep(10 * time.Millisecond)
+	p.Wake()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Wake did not cancel the preloader polling delay")
+	}
+}

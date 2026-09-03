@@ -53,6 +53,24 @@ func TestReserveMarksSeenOnlyAfterAiring(t *testing.T) {
 	}
 }
 
+func TestFetchKeepsEnoughCandidatesForContinuousNews(t *testing.T) {
+	var xml strings.Builder
+	xml.WriteString(`<?xml version="1.0"?><rss><channel>`)
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&xml, `<item><title>story %d</title><link>https://example.test/%d</link><pubDate>%s</pubDate></item>`, i, i, time.Now().Add(-time.Duration(i)*time.Minute).Format(time.RFC1123Z))
+	}
+	xml.WriteString(`</channel></rss>`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(xml.String()))
+	}))
+	defer server.Close()
+
+	items := Fetch([]Feed{{Name: "busy", URL: server.URL, Category: "stock"}})
+	if len(items) != 30 {
+		t.Fatalf("Fetch returned %d candidates, want 30", len(items))
+	}
+}
+
 func TestReserveBulletinBalancesFullNews(t *testing.T) {
 	now := time.Now()
 	q := NewQueue(t.TempDir())

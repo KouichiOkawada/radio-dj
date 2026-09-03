@@ -182,6 +182,13 @@ func Serve(cfg config.Config) error {
 	// coalesce into one pending action; the loop drains it after Play returns.
 	controls := make(chan string, 1)
 	var controlMu sync.Mutex
+	var activePlaybackGeneration atomic.Uint64 // encoded as generation+1; zero means between segments
+	playForGeneration := func(path string, generation uint64) error {
+		encoded := generation + 1
+		activePlaybackGeneration.Store(encoded)
+		defer activePlaybackGeneration.CompareAndSwap(encoded, 0)
+		return streamer.Play(path)
+	}
 	takeControl := func() string {
 		controlMu.Lock()
 		defer controlMu.Unlock()
@@ -208,10 +215,40 @@ func Serve(cfg config.Config) error {
 			log.Printf("[mode] save: %v", err)
 			return false
 		}
+		_, oldGeneration := modes.Snapshot()
 		modes.Set(mode)
+		if mode == "news" {
+			newsPrep.Wake()
+		}
 		// Cut the current decoder so the consumer drops the old tanda and
 		// begins the newly selected mode without waiting for a whole song.
-		_ = streamer.SkipCurrent()
+		controlMu.Lock()
+		stopped := streamer.SkipCurrent()
+		controlMu.Unlock()
+		if !stopped {
+			// SetCurrent and ffmpeg's decoder registration are not atomic. If the
+			// click lands in that gap, retry only while an old-generation segment
+			// is active; never kill audio that already belongs to the new mode.
+			go func(staleGeneration uint64) {
+				deadline := time.Now().Add(2 * time.Second)
+				encodedStale := staleGeneration + 1
+				for time.Now().Before(deadline) {
+					active := activePlaybackGeneration.Load()
+					if active > encodedStale {
+						return
+					}
+					if active == encodedStale {
+						controlMu.Lock()
+						stopped := streamer.SkipCurrent()
+						controlMu.Unlock()
+						if stopped {
+							return
+						}
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+			}(oldGeneration)
+		}
 		return true
 	})
 	st.MarkPlaying(true)
@@ -349,7 +386,7 @@ func Serve(cfg config.Config) error {
 				}
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
-				if err := streamer.Play(seg.Path); err != nil {
+				if err := playForGeneration(seg.Path, batch.generation); err != nil {
 					log.Printf("[news] segment error: %v", err)
 				}
 				newsPrep.cleanupSegment(seg)
@@ -364,7 +401,7 @@ func Serve(cfg config.Config) error {
 					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
 				}
 				logDJ(status.LogKindDJ, seg.Text)
-				if err := streamer.Play(seg.Path); err != nil {
+				if err := playForGeneration(seg.Path, batch.generation); err != nil {
 					log.Printf("[dj] segment error: %v", err)
 				}
 				newsPrep.cleanupSegment(seg)
@@ -444,7 +481,7 @@ func Serve(cfg config.Config) error {
 			if seg.NewsFallback {
 				newsReadyWatch = make(chan struct{})
 				go func(done <-chan struct{}) {
-					ticker := time.NewTicker(time.Second)
+					ticker := time.NewTicker(100 * time.Millisecond)
 					defer ticker.Stop()
 					for {
 						select {
@@ -463,7 +500,7 @@ func Serve(cfg config.Config) error {
 					}
 				}(newsReadyWatch)
 			}
-			perr := streamer.Play(seg.Path)
+			perr := playForGeneration(seg.Path, batch.generation)
 			if newsReadyWatch != nil {
 				close(newsReadyWatch)
 			}
@@ -476,7 +513,7 @@ func Serve(cfg config.Config) error {
 				prev := *previousTrack
 				log.Printf("[radio-dj] ◀ replay %s — %s", prev.Meta.Title, prev.Meta.Artist)
 				st.SetCurrent(toStatus(prev.Meta), toStatus(seg.Meta))
-				_ = streamer.Play(prev.Path)
+				_ = playForGeneration(prev.Path, batch.generation)
 				// a "next" while replaying the previous track returns to the
 				// interrupted current track; discard that consumed command.
 				_ = takeControl()
