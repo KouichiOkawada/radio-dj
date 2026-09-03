@@ -29,6 +29,22 @@ func New(provider, voice, rawCmd string) *Voice {
 // Speak renders text to a temp audio file and returns its path.
 func (v *Voice) Speak(text string) (string, error) {
 	out := filepath.Join(os.TempDir(), fmt.Sprintf("radio-dj-voice-%d.wav", time.Now().UnixNano()))
+	// Invoke Edge TTS directly on Windows. Passing a shell-quoted Unicode
+	// string through cmd.exe corrupts its argument boundaries and causes
+	// edge-tts to reject Japanese text. exec.Command preserves argv exactly.
+	if runtime.GOOS == "windows" && v.rawCmd == "" && v.provider == "edge-tts" {
+		voiceID := v.voice
+		if voiceID == "" {
+			voiceID = "ja-JP-NanamiNeural"
+		}
+		if output, err := exec.Command("edge-tts", "--voice", voiceID, "--text", text, "--write-media", out).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("edge-tts: %w: %s", err, strings.TrimSpace(string(output)))
+		}
+		if _, err := os.Stat(out); err != nil {
+			return "", fmt.Errorf("voice produced no file at %s", out)
+		}
+		return out, nil
+	}
 	cmd, err := v.commandFor(text, out)
 	if err != nil {
 		return "", err
