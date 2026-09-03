@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -32,7 +33,11 @@ func (v *Voice) Speak(text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := exec.Command("sh", "-c", cmd).Run(); err != nil {
+	shell, arg := "sh", "-c"
+	if runtime.GOOS == "windows" {
+		shell, arg = "cmd.exe", "/C"
+	}
+	if err := exec.Command(shell, arg, cmd).Run(); err != nil {
 		return "", fmt.Errorf("voice cmd failed: %w", err)
 	}
 	if _, err := os.Stat(out); err != nil {
