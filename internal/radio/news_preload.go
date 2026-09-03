@@ -1,7 +1,9 @@
 package radio
 
 import (
+	"context"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,6 +50,7 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 	}
 
 	st.SetNewsReadiness(false, 0, "loading")
+	p.pruneAudio(filepath.Join(cfg.StateDir, "news"), 24*time.Hour)
 	go p.run(cfg, djx, vox, queue, store, clock)
 	return p
 }
@@ -57,10 +60,14 @@ func (p *newsPreloader) publish(state string) {
 		return
 	}
 	count := len(p.ready)
+	if count > 0 && state != "unavailable" {
+		state = "ready"
+	}
 	p.status.SetNewsReadiness(count > 0, count, state)
 }
 
 func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock) {
+	market := news.NewJQuants(cfg.JQuantsAPIKey)
 	for {
 		// Keep several complete, article-sized breaks ready while music, news, or
 		// DJ commentary is on air. Each entry has its own metadata, so the player
@@ -82,6 +89,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		}
 
 		news.ResolveImage(&item)
+		p.status.SetNewsPreview(toNewsStatus(item, ""))
 		bulletin := strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
 		if bulletin == "" {
 			log.Printf("[news] preload skipped empty bulletin: %s", item.Title)
@@ -113,7 +121,16 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
 		if djx != nil {
-			comment := strings.TrimSpace(djx.NewsCommentary(item.Source, item.Title, item.Description))
+			marketContext := ""
+			if strings.EqualFold(item.Category, "finance") {
+				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				marketContext = market.MarketContext(ctx, cfg.WatchSymbols)
+				cancel()
+				if marketContext != "" {
+					log.Printf("[news] J-Quants context ready for %d watch symbol(s)", len(cfg.WatchSymbols))
+				}
+			}
+			comment := strings.TrimSpace(djx.NewsCommentary(item.Source, item.Title, item.Description, marketContext))
 			if comment == "" {
 				comment = "このニュースの内容を受け止めながら、続報と周囲への影響を落ち着いて見ていきたいですね。"
 			}
@@ -169,6 +186,37 @@ func (p *newsPreloader) releaseSegments(segments []Segment) {
 			} else {
 				p.queue.Release(*seg.News)
 			}
+		}
+		p.cleanupSegment(seg)
+	}
+}
+
+func (p *newsPreloader) cleanupSegment(seg Segment) {
+	if p == nil || (!seg.IsNews && !seg.IsDJ) || seg.Path == "" {
+		return
+	}
+	newsDir, err := filepath.Abs(filepath.Join(p.status.StateDir(), "news"))
+	if err != nil {
+		return
+	}
+	path, err := filepath.Abs(seg.Path)
+	if err == nil && filepath.Dir(path) == newsDir {
+		_ = os.Remove(path)
+	}
+}
+
+func (p *newsPreloader) pruneAudio(dir string, maxAge time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "news-") || !strings.HasSuffix(strings.ToLower(entry.Name()), ".mp3") {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, entry.Name()))
 		}
 	}
 }

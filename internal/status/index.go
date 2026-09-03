@@ -97,7 +97,7 @@ func (s *Server) serveIndex(w http.ResponseWriter) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	html := strings.Replace(page.String(), "</body>", `<script src="/news-readiness.js"></script></body>`, 1)
+	html := strings.Replace(page.String(), "</body>", `<script src="/news-readiness.js?v=3"></script></body>`, 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(html))
 }

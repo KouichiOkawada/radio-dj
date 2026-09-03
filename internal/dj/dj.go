@@ -144,7 +144,7 @@ func (d *DJ) NewsComment(source, title, description string) string {
 // natural Japanese TTS pace 900–1100 characters is roughly three minutes. The
 // supplied RSS facts remain the hard boundary; interpretation must be clearly
 // framed as the DJ's own view.
-func (d *DJ) NewsCommentary(source, title, description string) string {
+func (d *DJ) NewsCommentary(source, title, description, marketContext string) string {
 	prompt := "いま読み上げたニュースについて、日本語のラジオDJとして約3分間、900〜1100文字を目安に話してください。" +
 		"最初に、下の見出しと概要だけを使って聞き手に分かりやすく要点を言い換えてください。続いて、この話題が気になる理由、生活や市場で注目したい観点、聞き手への穏やかな問いかけを、DJ自身の私見として自然に話してください。" +
 		"下にない事実、数字、原因、背景、人物の発言は絶対に追加しないでください。事実と感想を混同せず、推測は『かもしれません』『注目したいですね』のように表現してください。" +
@@ -152,6 +152,10 @@ func (d *DJ) NewsCommentary(source, title, description string) string {
 		"出典: " + source + "\n見出し: " + title
 	if strings.TrimSpace(description) != "" {
 		prompt += "\nRSS概要: " + description
+	}
+	if strings.TrimSpace(marketContext) != "" {
+		prompt += "\nJ-Quantsで確認したウォッチ銘柄情報（ニュースとの直接関係は断定しないこと。値の単位を推測せず、開示日を必ず添えること）:\n" + marketContext +
+			"\n経済ニュースでは、この情報から最低1銘柄を必ず取り上げ、ニュースとの共通点または相違点を私見として述べてください。"
 	}
 	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 1200))
 }

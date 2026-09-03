@@ -24,15 +24,23 @@
     const count = Number(snapshot.news_ready_count || 0);
     const state = snapshot.news_state || (ready ? 'ready' : 'loading');
 
-    button.disabled = !ready;
-    button.setAttribute('aria-disabled', ready ? 'false' : 'true');
-    button.style.opacity = ready ? '1' : '.5';
-    button.style.cursor = ready ? 'pointer' : 'not-allowed';
+    const alreadyInNewsMode = snapshot.mode === 'news';
+    button.disabled = !ready && !alreadyInNewsMode;
+    button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
+    button.style.opacity = button.disabled ? '.5' : '1';
+    button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
 
     if (ready) {
       button.textContent = defaultLabel;
       button.title = count > 0 ? `放送準備済みニュース ${count} 件` : 'ニュース放送の準備ができています';
       if (stateEl) stateEl.textContent = `NEWS ENGINE · READY${count > 0 ? ` · ${count}件先読み済み` : ''}`;
+      return;
+    }
+
+    if (alreadyInNewsMode) {
+      button.textContent = defaultLabel;
+      button.title = 'ニュース連続モードで放送中です';
+      if (stateEl) stateEl.textContent = 'NEWS ENGINE · 次のニュースを準備中';
       return;
     }
 

@@ -59,6 +59,7 @@ type NowPlaying struct {
 	NewsReady      bool      `json:"news_ready"`
 	NewsReadyCount int       `json:"news_ready_count"`
 	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | unavailable
+	NewsPreview    *Track    `json:"news_preview,omitempty"`
 }
 
 type Server struct {
@@ -90,6 +91,10 @@ func New(stateDir string, needsSetup bool, mount string) *Server {
 func (s *Server) SetLanguage(lang string) {
 	s.lang = lang
 }
+
+// StateDir exposes the server-owned runtime directory to tightly scoped radio
+// maintenance such as removing completed generated news audio.
+func (s *Server) StateDir() string { return s.dir }
 
 // SetControlHandler wires the radio loop's skip callback. POST /control
 // forwards "previous"/"next" here; the handler kills the in-flight decoder
@@ -198,6 +203,15 @@ func (s *Server) SetNewsReadiness(ready bool, count int, state string) {
 	if changed {
 		go s.broadcast()
 	}
+}
+
+// SetNewsPreview keeps the news desk visible while music is on air. It is a
+// preview only; SetCurrent remains the authoritative article at air-time.
+func (s *Server) SetNewsPreview(preview Track) {
+	s.mu.Lock()
+	s.cur.NewsPreview = &preview
+	s.mu.Unlock()
+	go s.broadcast()
 }
 
 func (s *Server) NewsReady() bool {

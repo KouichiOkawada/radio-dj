@@ -1,7 +1,7 @@
 // radio-dj service worker — app-shell cache for installability + offline UI.
 // The stream itself can't be cached (live audio); this only caches the page
 // shell so the install prompt fires and the app opens offline.
-const CACHE = 'radio-dj-v1';
+const CACHE = 'radio-dj-v3';
 const SHELL = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png', '/font/permanent-marker.woff2'];
 
 self.addEventListener('install', e => {

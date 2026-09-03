@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"radio-dj/internal/config"
@@ -35,23 +36,25 @@ import (
 
 // Segment is one item fed to the streamer: a DJ voice clip or a music track.
 type Segment struct {
-	Path      string
-	IsVoice   bool
-	IsNews    bool
-	IsDJ      bool
-	News      *news.Item
-	NewsItems []news.Item
-	Program   *news.ProgramSlot // non-nil for the scheduled slot this bulletin fulfils
-	LiveTime  bool              // voice generated at air-time (clock skill) — no pre-baked Path
-	Midroll   bool              // voice fires mid-song (~50%), not at the start
-	Meta      library.Track     // valid when !IsVoice
-	Text      string            // DJ speech text — logged at air-time, not build-time
-	Req       string            // request text that matched this track — air-time log
+	Path         string
+	IsVoice      bool
+	IsNews       bool
+	IsDJ         bool
+	News         *news.Item
+	NewsItems    []news.Item
+	Program      *news.ProgramSlot // non-nil for the scheduled slot this bulletin fulfils
+	LiveTime     bool              // voice generated at air-time (clock skill) — no pre-baked Path
+	Midroll      bool              // voice fires mid-song (~50%), not at the start
+	Meta         library.Track     // valid when !IsVoice
+	Text         string            // DJ speech text — logged at air-time, not build-time
+	Req          string            // request text that matched this track — air-time log
+	NewsFallback bool              // music filler that may be replaced by a newly READY news break
 }
 
 type preparedTanda struct {
-	mode string
-	segs []Segment
+	mode       string
+	generation uint64
+	segs       []Segment
 }
 
 // djLogPath is set in Serve(); logDJ appends DJ speech, requests and the
@@ -59,8 +62,9 @@ type preparedTanda struct {
 var djLogPath string
 
 type playbackMode struct {
-	mu   sync.RWMutex
-	mode string
+	mu         sync.RWMutex
+	mode       string
+	generation uint64
 }
 
 func newPlaybackMode(mode string) *playbackMode { return &playbackMode{mode: mode} }
@@ -69,9 +73,15 @@ func (p *playbackMode) Get() string {
 	defer p.mu.RUnlock()
 	return p.mode
 }
+func (p *playbackMode) Snapshot() (string, uint64) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.mode, p.generation
+}
 func (p *playbackMode) Set(mode string) {
 	p.mu.Lock()
 	p.mode = mode
+	p.generation++
 	p.mu.Unlock()
 }
 
@@ -229,10 +239,19 @@ func Serve(cfg config.Config) error {
 
 	// Producer: prefetch tandas so the master never starves.
 	prepared := make(chan preparedTanda, 2)
+	var queuedNewsBatches atomic.Int32
+	var activeNewsFallbacks atomic.Int32
 	go func() {
 		tc := 0
 		for {
-			mode := modes.Get()
+			mode, generation := modes.Snapshot()
+			// One filler is enough in News Continuous. While it is on air, leave
+			// newly rendered bulletins in the READY queue where the watcher can see
+			// them, instead of filling the prefetch channel with more music.
+			if (mode == "news" || mode == "radio") && activeNewsFallbacks.Load() > 0 {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
 			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, programClock, &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
@@ -240,7 +259,13 @@ func Serve(cfg config.Config) error {
 				continue
 			}
 			log.Printf("[radio-dj] tanda lista (%d segmentos%s) — prefetched", len(segs), reqs)
-			prepared <- preparedTanda{mode: mode, segs: segs}
+			if segmentsContainNews(segs) {
+				queuedNewsBatches.Add(1)
+			}
+			if segmentsContainNewsFallback(segs) {
+				activeNewsFallbacks.Add(1)
+			}
+			prepared <- preparedTanda{mode: mode, generation: generation, segs: segs}
 		}
 	}()
 
@@ -248,8 +273,17 @@ func Serve(cfg config.Config) error {
 	var previousTrack *Segment
 	tandaN := 0
 	for batch := range prepared {
-		if batch.mode != modes.Get() {
+		batchHasNews := segmentsContainNews(batch.segs)
+		batchHasFallback := segmentsContainNewsFallback(batch.segs)
+		if batchHasNews {
+			queuedNewsBatches.Add(-1)
+		}
+		currentMode, currentGeneration := modes.Snapshot()
+		if batch.mode != currentMode || batch.generation != currentGeneration {
 			newsPrep.releaseSegments(batch.segs)
+			if batchHasFallback {
+				activeNewsFallbacks.Add(-1)
+			}
 			continue // stale prefetch from before a mode switch
 		}
 		segs := batch.segs
@@ -260,10 +294,27 @@ func Serve(cfg config.Config) error {
 		pendingMidrollPath := ""
 		pendingMidrollText := ""
 		pendingLiveTime := false
-		for i, seg := range segs {
-			if batch.mode != modes.Get() {
+		for i := 0; i < len(segs); i++ {
+			seg := segs[i]
+			currentMode, currentGeneration = modes.Snapshot()
+			if batch.mode != currentMode || batch.generation != currentGeneration {
 				newsPrep.releaseSegments(segs[i:])
 				break // mode changed while this tanda was on air
+			}
+			// News-only mode uses music while the background renderer catches up.
+			// Re-check at the last possible moment: if a bulletin became READY after
+			// this batch was prefetched, replace the filler instead of playing a full
+			// extra song and making the mode appear unresponsive.
+			if seg.NewsFallback {
+				if ready, ok := newsPrep.tryTake(""); ok {
+					replacement := make([]Segment, 0, len(segs)-1+len(ready))
+					replacement = append(replacement, segs[:i]...)
+					replacement = append(replacement, ready...)
+					replacement = append(replacement, segs[i+1:]...)
+					segs = replacement
+					i--
+					continue
+				}
 			}
 			if seg.IsNews {
 				newsPrep.markAired(seg)
@@ -275,6 +326,7 @@ func Serve(cfg config.Config) error {
 				if err := streamer.Play(seg.Path); err != nil {
 					log.Printf("[news] segment error: %v", err)
 				}
+				newsPrep.cleanupSegment(seg)
 				continue
 			}
 			if seg.IsDJ {
@@ -289,6 +341,7 @@ func Serve(cfg config.Config) error {
 				if err := streamer.Play(seg.Path); err != nil {
 					log.Printf("[dj] segment error: %v", err)
 				}
+				newsPrep.cleanupSegment(seg)
 				continue
 			}
 			if seg.IsVoice {
@@ -359,7 +412,34 @@ func Serve(cfg config.Config) error {
 					}
 				}()
 			}
+			// If the filler started just before a bulletin became ready, end it at
+			// once instead of making News Continuous wait for the whole track.
+			var newsReadyWatch chan struct{}
+			if seg.NewsFallback {
+				newsReadyWatch = make(chan struct{})
+				go func(done <-chan struct{}) {
+					ticker := time.NewTicker(time.Second)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-done:
+							return
+						case <-ticker.C:
+							mode := modes.Get()
+							if (mode == "news" || mode == "radio") && (st.NewsReady() || queuedNewsBatches.Load() > 0) {
+								controlMu.Lock()
+								_ = streamer.SkipCurrent()
+								controlMu.Unlock()
+								return
+							}
+						}
+					}
+				}(newsReadyWatch)
+			}
 			perr := streamer.Play(seg.Path)
+			if newsReadyWatch != nil {
+				close(newsReadyWatch)
+			}
 			control := takeControl()
 			if perr != nil && control == "" {
 				log.Printf("[radio-dj] segment error: %v", perr)
@@ -415,8 +495,29 @@ func Serve(cfg config.Config) error {
 				log.Printf("[dj] interject: %v", err)
 			}
 		}
+		if batchHasFallback {
+			activeNewsFallbacks.Add(-1)
+		}
 	}
 	return nil
+}
+
+func segmentsContainNews(segs []Segment) bool {
+	for _, seg := range segs {
+		if seg.IsNews {
+			return true
+		}
+	}
+	return false
+}
+
+func segmentsContainNewsFallback(segs []Segment) bool {
+	for _, seg := range segs {
+		if seg.NewsFallback {
+			return true
+		}
+	}
+	return false
 }
 
 // buildTanda returns the ordered segments for one batch (requested songs
@@ -466,7 +567,7 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		// safe filler and the next producer cycle checks the ready queue again.
 		if t, e := lib.Next(); e == nil {
 			log.Printf("[news] no READY bulletin — music fallback")
-			addTrack(t)
+			segs = append(segs, Segment{Path: t.Src, Meta: t, NewsFallback: true})
 			*trackCount++
 			return segs, "", nil
 		}
@@ -482,13 +583,15 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		return segs, "", nil
 	}
 
-	// The factual bulletin is already rendered by newsPreloader. The programme
-	// clock only decides whether a READY break is inserted at this natural song
-	// boundary; it never performs HTTP/LLM/TTS work on the playback path.
+	// Radio mode is a predictable news → opinion → song programme. The clock
+	// supplies a label when a formal slot is due, but fresh READY news also airs
+	// between slots; otherwise "radio" could silently become hours of music.
 	didNews := false
 	if cfg.DJEnabled && len(cfg.NewsFeeds) > 0 {
 		if slot, due := programClock.Due(time.Now()); due {
 			didNews = addNews(&slot)
+		} else {
+			didNews = addNews(nil)
 		}
 	}
 
@@ -520,9 +623,10 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	// introduction. This is kept out of the news-continuous branch above, where
 	// the requested flow is article → DJ discussion → next article.
 	if didNews {
-		for i := 0; i < cfg.Chunk; i++ {
+		// A matched request already supplied its own spoken introduction + song.
+		if matched == 0 {
 			if t, e := lib.Next(); e == nil {
-				if i == 0 && cfg.DJEnabled && djx != nil {
+				if cfg.DJEnabled && djx != nil {
 					addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
 				}
 				addTrack(t)
@@ -531,6 +635,20 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		}
 		if len(segs) == 0 {
 			return nil, "", fmt.Errorf("news: no music after bulletin")
+		}
+		return segs, reqs, nil
+	}
+	if mode == "radio" {
+		// News is still rendering. Keep one song on air, then check again; do
+		// not pre-plan an eight-song block that delays a newly READY bulletin.
+		if len(segs) == 0 {
+			if t, e := lib.Next(); e == nil {
+				segs = append(segs, Segment{Path: t.Src, Meta: t, NewsFallback: true})
+				*trackCount++
+			}
+		}
+		if len(segs) == 0 {
+			return nil, "", fmt.Errorf("radio: no news and no music fallback")
 		}
 		return segs, reqs, nil
 	}

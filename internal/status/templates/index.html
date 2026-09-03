@@ -30,6 +30,7 @@
     --song:0; --flow:-34px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none!important}
   html,body{min-height:100%}
   body{ background:var(--bg); color:var(--ink);
     font-family:var(--font-ui);
@@ -220,7 +221,7 @@
     :root{ --bg:#f3f6fa; --paper:#fff; --ink:#15202b; --soft:#5f6b78; --line:#d8e0e8; --onair:#d8463a; }
     body{ align-items:stretch; padding:28px clamp(24px,4vw,64px) 40px;
       background-image:radial-gradient(circle at 12% 0,#dcecf6 0,transparent 29%),radial-gradient(circle at 100% 10%,#f7e4d3 0,transparent 25%),linear-gradient(135deg,#f6f8fb,#e9eff6); }
-    .stack{ max-width:1480px; margin:0 auto; grid-template-columns:minmax(250px,.72fr) minmax(460px,1.45fr) minmax(290px,.83fr); grid-template-areas:
+    .stack{ max-width:1560px; margin:0 auto; grid-template-columns:minmax(250px,.68fr) minmax(520px,1.42fr) minmax(350px,.9fr); grid-template-areas:
       'bar bar bar'
       'tabs cassette news'
       'panel cassette dj'
@@ -260,11 +261,6 @@
     .ask{ grid-area:ask; padding:20px; }
     .ask input,.ask button{ border:1px solid var(--line); }
     .ask button{ border-radius:0 9px 9px 0; }
-    /* Keep the primary controls in the first screenful even while the cassette is tall. */
-    .mode-card{ margin-top:-250px; }
-    .volume-card{ margin-top:-45px; }
-    .stack.state-dj .mode-card{ margin-top:-135px; }
-    .stack.state-dj .volume-card{ margin-top:70px; }
   }
   @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
@@ -284,12 +280,12 @@
       </div>
     </div>
 
-    <section class="blk news-card" id="news-card" hidden aria-live="polite">
-      <div class="news-kicker">NEWS · BGM ON AIR</div>
+    <section class="blk news-card" id="news-card" aria-live="polite">
+      <div class="news-kicker" id="news-kicker">NEWS DESK · 準備中</div>
       <div class="news-grid">
         <img class="news-image" id="news-image" alt="" hidden>
         <div>
-          <div class="news-title" id="news-title"></div>
+          <div class="news-title" id="news-title">ニュースを収集中です</div>
           <div class="news-meta" id="news-meta"></div>
           <div class="news-desc" id="news-desc"></div>
           <a class="news-link" id="news-link" target="_blank" rel="noopener noreferrer" hidden>記事を開く</a>
@@ -718,19 +714,28 @@
     setModeUI(j.mode || 'radio');
     const newsCard = $('news-card');
     const djCard = $('dj-card');
-    if(c.type === 'news'){
-      newsCard.hidden = false;
-      $('news-title').textContent = c.title || 'ニュース';
-      $('news-meta').textContent = [c.source, c.published_at].filter(Boolean).join(' / ');
-      $('news-desc').textContent = c.description || c.speech_text || '';
+    const shownNews = c.type === 'news' ? c : (j.news_preview || {});
+    const hasNews = !!shownNews.title;
+    $('news-kicker').textContent = c.type === 'news'
+      ? 'NEWS · BGM ON AIR'
+      : (hasNews && j.news_ready ? 'NEXT NEWS · 放送準備済み' : (hasNews ? 'NEWS DESK · AI解説を準備中' : 'NEWS DESK · ニュースを収集中'));
+    if(hasNews){
+      $('news-title').textContent = shownNews.title || 'ニュース';
+      $('news-meta').textContent = [shownNews.source, shownNews.published_at].filter(Boolean).join(' / ');
+      $('news-desc').textContent = shownNews.description || shownNews.speech_text || '';
       const link = $('news-link');
-      link.hidden = !c.url; link.href = c.url || '#';
+      link.hidden = !shownNews.url; link.href = shownNews.url || '#';
       const image = $('news-image');
-      image.closest('.news-grid').classList.toggle('no-image', !c.image_url);
-      image.hidden = !c.image_url;
-      if(c.image_url) image.src = c.image_url;
+      image.closest('.news-grid').classList.toggle('no-image', !shownNews.image_url);
+      image.hidden = !shownNews.image_url;
+      if(shownNews.image_url) image.src = shownNews.image_url;
     } else {
-      newsCard.hidden = true;
+      $('news-title').textContent = 'ニュースを収集中です';
+      $('news-meta').textContent = '';
+      $('news-desc').textContent = '音楽を止めずに、RSS取得・AI解説・音声合成をバックグラウンドで進めています。';
+      $('news-link').hidden = true;
+      $('news-image').hidden = true;
+      $('news-image').closest('.news-grid').classList.add('no-image');
     }
     if(c.type === 'dj'){
       djCard.hidden = false;
