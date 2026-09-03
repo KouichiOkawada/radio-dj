@@ -9,6 +9,9 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -19,10 +22,41 @@ type Feed struct {
 	URL  string `json:"url"`
 }
 
+// MixWithBed creates a complete news segment: the bed loops under the TTS
+// file, stays at the configured gain, and ends exactly with the speech. It
+// deliberately returns an error when the configured bed is absent: news must
+// never silently fall back to dry speech.
+func MixWithBed(ffmpeg, speechPath, bedPath, outDir string, volume float64) (string, error) {
+	if _, err := os.Stat(bedPath); err != nil {
+		return "", fmt.Errorf("news bed unavailable: %w", err)
+	}
+	if ffmpeg == "" {
+		var err error
+		ffmpeg, err = exec.LookPath("ffmpeg")
+		if err != nil {
+			return "", fmt.Errorf("ffmpeg not found: %w", err)
+		}
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return "", err
+	}
+	out := filepath.Join(outDir, fmt.Sprintf("news-%d.mp3", time.Now().UnixNano()))
+	filter := fmt.Sprintf("[0:a]volume=%.3f,afade=t=in:st=0:d=0.4[bed];[bed][1:a]amix=inputs=2:duration=shortest:normalize=0[mix]", volume)
+	cmd := exec.Command(ffmpeg, "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", bedPath, "-i", speechPath,
+		"-filter_complex", filter, "-map", "[mix]", "-c:a", "libmp3lame", "-b:a", "192k", "-shortest", out)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("mix news bed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return out, nil
+}
+
 type Item struct {
 	Source      string
 	Title       string
 	Description string
+	URL         string
+	PublishedAt string
+	ImageURL    string
 }
 
 type document struct {
@@ -36,6 +70,9 @@ type entry struct {
 	Title       string `xml:"title"`
 	Description string `xml:"description"`
 	Summary     string `xml:"summary"`
+	Link        string `xml:"link"`
+	PubDate     string `xml:"pubDate"`
+	Published   string `xml:"published"`
 }
 
 // Fetch returns up to two recent, distinct entries per feed. A failed feed is
@@ -78,7 +115,11 @@ func Fetch(feeds []Feed) []Item {
 			if desc == "" {
 				desc = clean(e.Summary)
 			}
-			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180)})
+			published := clean(e.PubDate)
+			if published == "" {
+				published = clean(e.Published)
+			}
+			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published})
 			if len(out) >= 4 {
 				return out
 			}

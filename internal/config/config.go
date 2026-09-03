@@ -42,6 +42,9 @@ type Config struct {
 	Bed           string
 	NewsEvery     int
 	NewsFeeds     []NewsFeed
+	NewsBGMPath   string
+	NewsBGMVolume float64
+	Audio         AudioSettings
 
 	LocationName string
 	Latitude     float64
@@ -58,32 +61,44 @@ type NewsFeed struct {
 	URL  string `json:"url"`
 }
 
+// AudioSettings are persisted in config.json and constrained to linear gain
+// values, where 0 is silent and 1 is unity gain.
+type AudioSettings struct {
+	MasterVolume  float64 `json:"master_volume"`
+	MusicVolume   float64 `json:"music_volume"`
+	VoiceVolume   float64 `json:"voice_volume"`
+	NewsBGMVolume float64 `json:"news_bgm_volume"`
+}
+
 // fileConfig is the onboarding-persisted shape (user-settable fields only).
 type fileConfig struct {
-	Library       string     `json:"library,omitempty"`
-	Source        string     `json:"source,omitempty"`
-	NavidromeURL  string     `json:"navidrome_url,omitempty"`
-	NavidromeUser string     `json:"navidrome_user,omitempty"`
-	NavidromePass string     `json:"navidrome_pass,omitempty"`
-	GLMAPIKey     string     `json:"glm_api_key,omitempty"`
-	GLMBaseURL    string     `json:"glm_base_url,omitempty"`
-	GLMModel      string     `json:"glm_model,omitempty"`
-	LLMProvider   string     `json:"llm_provider,omitempty"`
-	VoiceProvider string     `json:"voice_provider,omitempty"`
-	Voice         string     `json:"voice,omitempty"`
-	VoiceCmd      string     `json:"voice_cmd,omitempty"`
-	Location      string     `json:"location,omitempty"`
-	Latitude      float64    `json:"lat,omitempty"`
-	Longitude     float64    `json:"lon,omitempty"`
-	Language      string     `json:"language,omitempty"`
-	DJEvery       int        `json:"dj_every,omitempty"`
-	DJTalk        string     `json:"dj_talk,omitempty"`
-	Chunk         int        `json:"chunk,omitempty"`
-	Bitrate       int        `json:"bitrate,omitempty"`
-	StationName   string     `json:"station_name,omitempty"`
-	Bed           string     `json:"bed,omitempty"`
-	NewsEvery     int        `json:"news_every,omitempty"`
-	NewsFeeds     []NewsFeed `json:"news_feeds,omitempty"`
+	Library       string        `json:"library,omitempty"`
+	Source        string        `json:"source,omitempty"`
+	NavidromeURL  string        `json:"navidrome_url,omitempty"`
+	NavidromeUser string        `json:"navidrome_user,omitempty"`
+	NavidromePass string        `json:"navidrome_pass,omitempty"`
+	GLMAPIKey     string        `json:"glm_api_key,omitempty"`
+	GLMBaseURL    string        `json:"glm_base_url,omitempty"`
+	GLMModel      string        `json:"glm_model,omitempty"`
+	LLMProvider   string        `json:"llm_provider,omitempty"`
+	VoiceProvider string        `json:"voice_provider,omitempty"`
+	Voice         string        `json:"voice,omitempty"`
+	VoiceCmd      string        `json:"voice_cmd,omitempty"`
+	Location      string        `json:"location,omitempty"`
+	Latitude      float64       `json:"lat,omitempty"`
+	Longitude     float64       `json:"lon,omitempty"`
+	Language      string        `json:"language,omitempty"`
+	DJEvery       int           `json:"dj_every,omitempty"`
+	DJTalk        string        `json:"dj_talk,omitempty"`
+	Chunk         int           `json:"chunk,omitempty"`
+	Bitrate       int           `json:"bitrate,omitempty"`
+	StationName   string        `json:"station_name,omitempty"`
+	Bed           string        `json:"bed,omitempty"`
+	NewsEvery     int           `json:"news_every,omitempty"`
+	NewsFeeds     []NewsFeed    `json:"news_feeds,omitempty"`
+	NewsBGMPath   string        `json:"news_bgm_path,omitempty"`
+	NewsBGMVolume float64       `json:"news_bgm_volume,omitempty"`
+	Audio         AudioSettings `json:"audio,omitempty"`
 }
 
 // normalizeTalk canonicalizes the talkiness dial to English keys, accepting
@@ -133,6 +148,9 @@ func Load() Config {
 		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
 		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
 		NewsFeeds:       f.NewsFeeds,
+		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
+		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
+		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
 		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
 		Latitude:        pickFloat("RDJ_LAT", f.Latitude, -16.5),
 		Longitude:       pickFloat("RDJ_LON", f.Longitude, -68.15),
@@ -146,6 +164,25 @@ func Load() Config {
 	llmReady := c.GLMAPIKey != "" || strings.EqualFold(c.LLMProvider, "ollama")
 	c.DJEnabled = llmReady && (c.VoiceCmd != "" || c.VoiceProvider != "")
 	return c
+}
+
+func normalizeAudio(a AudioSettings, legacyNews float64) AudioSettings {
+	if a.MasterVolume == 0 {
+		a.MasterVolume = 0.8
+	}
+	if a.MusicVolume == 0 {
+		a.MusicVolume = 0.9
+	}
+	if a.VoiceVolume == 0 {
+		a.VoiceVolume = 1
+	}
+	if a.NewsBGMVolume == 0 {
+		a.NewsBGMVolume = legacyNews
+		if a.NewsBGMVolume == 0 {
+			a.NewsBGMVolume = 0.15
+		}
+	}
+	return a
 }
 
 // NeedsSetup reports whether the first-run wizard still needs to be shown.

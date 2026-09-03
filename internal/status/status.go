@@ -23,13 +23,20 @@ import (
 
 // Track is the on-air shape clients consume (Src is internal-only, never serialized).
 type Track struct {
-	Title    string  `json:"title"`
-	Artist   string  `json:"artist"`
-	Album    string  `json:"album,omitempty"`
-	Year     string  `json:"year,omitempty"`
-	BPM      string  `json:"bpm,omitempty"`
-	Duration float64 `json:"duration,omitempty"` // seconds (folder source only)
-	Src      string  `json:"-"`                  // internal: source path for cover art
+	Type        string  `json:"type,omitempty"` // music | dj | news
+	Title       string  `json:"title"`
+	Artist      string  `json:"artist"`
+	Album       string  `json:"album,omitempty"`
+	Year        string  `json:"year,omitempty"`
+	BPM         string  `json:"bpm,omitempty"`
+	Duration    float64 `json:"duration,omitempty"` // seconds (folder source only)
+	Src         string  `json:"-"`                  // internal: source path for cover art
+	Source      string  `json:"source,omitempty"`
+	URL         string  `json:"url,omitempty"`
+	Description string  `json:"description,omitempty"`
+	PublishedAt string  `json:"published_at,omitempty"`
+	ImageURL    string  `json:"image_url,omitempty"`
+	SpeechText  string  `json:"speech_text,omitempty"`
 }
 
 type Request struct {
@@ -109,6 +116,9 @@ func (s *Server) requestControl(action string) bool {
 // each track begins). The previous track is pushed into history and its cover
 // art is extracted to cover.jpg in the background.
 func (s *Server) SetCurrent(cur, next Track) {
+	if cur.Type == "" {
+		cur.Type = "music"
+	}
 	s.mu.Lock()
 	if prev := s.cur.Current; prev.Title != "" && prev.Title != cur.Title {
 		s.history = append([]Track{{Title: prev.Title, Artist: prev.Artist, Album: prev.Album, Year: prev.Year}}, s.history...)

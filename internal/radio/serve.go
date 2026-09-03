@@ -36,6 +36,8 @@ import (
 type Segment struct {
 	Path     string
 	IsVoice  bool
+	IsNews   bool
+	News     *news.Item
 	LiveTime bool          // voice generated at air-time (clock skill) — no pre-baked Path
 	Midroll  bool          // voice fires mid-song (~50%), not at the start
 	Meta     library.Track // valid when !IsVoice
@@ -204,6 +206,14 @@ func Serve(cfg config.Config) error {
 		pendingMidrollText := ""
 		pendingLiveTime := false
 		for i, seg := range segs {
+			if seg.IsNews {
+				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
+				logDJ(status.LogKindDJ, seg.Text)
+				if err := streamer.Play(seg.Path); err != nil {
+					log.Printf("[news] segment error: %v", err)
+				}
+				continue
+			}
 			if seg.IsVoice {
 				switch {
 				case seg.LiveTime:
@@ -354,8 +364,16 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	// involved in the bulletin, so an unavailable model or a hallucination can
 	// never change the reported facts.
 	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
-		if bulletin := news.Script(news.Fetch(toNewsFeeds(cfg.NewsFeeds)), cfg.Language); bulletin != "" {
-			addVoice(bulletin, false)
+		items := news.Fetch(toNewsFeeds(cfg.NewsFeeds))
+		if bulletin := news.Script(items, cfg.Language); bulletin != "" {
+			vf, verr := vox.Speak(bulletin)
+			if verr != nil {
+				log.Printf("[news] TTS: %v", verr)
+			} else if mixed, merr := news.MixWithBed("", vf, cfg.NewsBGMPath, filepath.Join(cfg.StateDir, "news"), cfg.Audio.NewsBGMVolume); merr != nil {
+				log.Printf("[news] skipped: %v", merr)
+			} else {
+				segs = append(segs, Segment{Path: mixed, IsNews: true, News: &items[0], Text: bulletin})
+			}
 		}
 	}
 
@@ -477,7 +495,11 @@ func toStatus(t library.Track) status.Track {
 	if t.Src != "" && !strings.Contains(t.Src, "://") {
 		d = library.Duration(t.Src).Seconds()
 	}
-	return status.Track{Title: t.Title, Artist: t.Artist, Album: t.Album, Year: t.Year, BPM: t.BPM, Duration: d, Src: t.Src}
+	return status.Track{Type: "music", Title: t.Title, Artist: t.Artist, Album: t.Album, Year: t.Year, BPM: t.BPM, Duration: d, Src: t.Src}
+}
+
+func toNewsStatus(item news.Item, speech string) status.Track {
+	return status.Track{Type: "news", Title: item.Title, Source: item.Source, URL: item.URL, Description: item.Description, PublishedAt: item.PublishedAt, ImageURL: item.ImageURL, SpeechText: speech}
 }
 
 func or(s, def string) string {
