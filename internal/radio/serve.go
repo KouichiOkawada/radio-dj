@@ -545,7 +545,11 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	} else {
 		for i := 0; i < cfg.Chunk; i++ {
 			if t, e := lib.Next(); e == nil {
-				shouldTalk := cfg.DJEnabled && djx != nil && cfg.DJEvery > 0 && (*trackCount == 0 || *trackCount%cfg.DJEvery == 0)
+				// Never put a local Ollama request on the playback producer's
+				// critical path. A reasoning model may take tens of seconds before
+				// returning its first token; music must start immediately. Ollama
+				// commentary is prepared by newsPreloader in the background instead.
+				shouldTalk := cfg.DJEnabled && djx != nil && !strings.EqualFold(cfg.LLMProvider, "ollama") && cfg.DJEvery > 0 && (*trackCount == 0 || *trackCount%cfg.DJEvery == 0)
 				// The preloaded news break already includes its grounded DJ
 				// reaction; avoid stacking another intro immediately after it.
 				if shouldTalk && !(didNews && i == 0) {
