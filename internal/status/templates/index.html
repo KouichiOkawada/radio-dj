@@ -44,11 +44,16 @@
   .blk{ background:var(--paper); border:3px solid var(--line); box-shadow:6px 6px 0 var(--line); min-width:0; }
   .news-card{ padding:14px; background:#dce9df; }
   .news-kicker{ font-family:var(--font-mono); font-size:11px; font-weight:900; letter-spacing:1.5px; }
-  .news-grid{ display:grid; grid-template-columns:92px 1fr; gap:12px; margin-top:10px; }
+  .news-grid{ display:grid; grid-template-columns:92px minmax(0,1fr); gap:12px; margin-top:10px; }
+  .news-grid.no-image{ grid-template-columns:minmax(0,1fr); }
   .news-image{ width:92px; height:70px; object-fit:cover; border:2px solid var(--line); background:#b8c7bb; }
   .news-title{ font-weight:900; font-size:15px; line-height:1.35; }
   .news-meta,.news-desc{ font-size:11px; line-height:1.45; color:var(--soft); margin-top:5px; }
   .news-link{ display:inline-block; margin-top:8px; color:var(--ink); font-weight:900; font-size:11px; }
+  .volume-card{ display:flex; align-items:center; gap:12px; padding:11px 14px; }
+  .volume-card label{ font-family:var(--font-mono); font-size:11px; font-weight:900; white-space:nowrap; }
+  .volume-card input{ flex:1; accent-color:var(--onair); }
+  .volume-card output{ font-family:var(--font-mono); font-weight:900; font-size:12px; min-width:38px; text-align:right; }
 
   /* ── Barra superior ── */
   .bar{ display:flex; align-items:stretch; }
@@ -232,6 +237,12 @@
         </div>
       </div>
     </section>
+
+    <div class="blk volume-card">
+      <label for="listen-volume">再生音量</label>
+      <input id="listen-volume" type="range" min="0" max="100" value="80" aria-label="再生音量">
+      <output id="listen-volume-value">80%</output>
+    </div>
 
     <div class="cass-wrap">
       <div class="flipper" id="flipper">
@@ -453,10 +464,21 @@
   // interpolated into this source, so any translated quote/apostrophe is safe.
   const T = JSON.parse(document.getElementById('i18n').textContent);
   const audio = document.getElementById('audio');
+  const $ = id => document.getElementById(id);
+  const listenVolume = $('listen-volume');
+  const savedListenVolume = Number(localStorage.getItem('rdj_listen_volume'));
+  const setListenVolume = value => {
+    const v = Math.max(0, Math.min(100, Number(value)||0));
+    audio.volume = v / 100;
+    listenVolume.value = String(v);
+    $('listen-volume-value').textContent = v + '%';
+    localStorage.setItem('rdj_listen_volume', String(v));
+  };
+  setListenVolume(Number.isFinite(savedListenVolume) ? savedListenVolume : 80);
+  listenVolume.addEventListener('input', e => setListenVolume(e.target.value));
   // src is (re)assigned on every play so stop() can release it and free the
   // progressive-download buffer WebKit otherwise retains after a long session.
   function playStream(){ audio.src = '{{.StreamPath}}'; return audio.play(); }
-  const $ = id => document.getElementById(id);
   const deck = $('deck');
 
   const kPlay = $('k-play'), kStop = $('k-stop'), kRec = $('k-rec'), kFfwd = $('k-ffwd'), kRew = $('k-rew');
@@ -605,6 +627,7 @@
       const link = $('news-link');
       link.hidden = !c.url; link.href = c.url || '#';
       const image = $('news-image');
+      image.closest('.news-grid').classList.toggle('no-image', !c.image_url);
       image.hidden = !c.image_url;
       if(c.image_url) image.src = c.image_url;
     } else {
