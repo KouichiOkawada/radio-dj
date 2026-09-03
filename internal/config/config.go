@@ -230,5 +230,8 @@ func firstNonEmpty(vs ...string) string {
 
 // defaultStateDir is the standalone state directory (~/.radio-dj).
 func defaultStateDir() string {
-	return os.Getenv("HOME") + "/.radio-dj"
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".radio-dj")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".radio-dj")
 }

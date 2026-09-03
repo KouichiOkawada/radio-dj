@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -20,6 +21,9 @@ const label = "com.radio-dj"
 // StableBinPath is where the binary is copied so the service survives a
 // repo move/delete.
 func StableBinPath() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(effectiveHome(), "AppData", "Local", "radio-dj", "radio-dj.exe")
+	}
 	return filepath.Join(effectiveHome(), ".local", "bin", "radio-dj")
 }
 
@@ -112,6 +116,9 @@ func effectiveHome() string {
 				return usr.HomeDir
 			}
 		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
 	}
 	return os.Getenv("HOME")
 }

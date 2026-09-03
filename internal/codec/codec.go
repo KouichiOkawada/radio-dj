@@ -34,6 +34,9 @@ func Default() string {
 	if runtime.GOOS == "darwin" {
 		return "aac_at"
 	}
+	if runtime.GOOS == "windows" {
+		return "libmp3lame"
+	}
 	return "aac"
 }
 

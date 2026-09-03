@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -36,6 +37,7 @@ func findIcecast() (string, error) {
 		return bin, nil
 	}
 	for _, p := range []string{
+		`C:\Program Files\Icecast\bin\icecast.exe`,
 		"/opt/homebrew/bin/icecast", // macOS Apple Silicon
 		"/usr/local/bin/icecast",    // macOS Intel / manual install
 		"/opt/homebrew/opt/icecast/bin/icecast",
@@ -45,7 +47,7 @@ func findIcecast() (string, error) {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("icecast binary not found — install it (macOS: `brew install icecast`)")
+	return "", fmt.Errorf("icecast binary not found — install Icecast 2.5+ and add it to PATH")
 }
 
 func EnsureIcecast(stateDir, host string, port int, mount string) (*Icecast, error) {
@@ -169,6 +171,11 @@ func indexOf(s, sub string) int {
 // killStrayIcecast terminates any icecast not spawned by us, so our config
 // (and its password) is the one bound to the port.
 func killStrayIcecast() {
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/IM", "icecast.exe", "/F").Run()
+		time.Sleep(500 * time.Millisecond)
+		return
+	}
 	_ = exec.Command("pkill", "-f", "icecast -c").Run()
 	time.Sleep(500 * time.Millisecond)
 }
@@ -222,6 +229,9 @@ func renderConfig(stateDir, host string, port int, sourcePw, adminPw, mount stri
 // brewPrefix returns the homebrew prefix for icecast's share dir (macOS).
 // On non-brew systems the operator overrides via the config file.
 func brewPrefix() string {
+	if runtime.GOOS == "windows" {
+		return `C:\Program Files\Icecast`
+	}
 	if p, err := exec.LookPath("icecast"); err == nil {
 		// /opt/homebrew/opt/icecast  or  /usr/local/opt/icecast
 		dir := filepath.Dir(filepath.Dir(p))
