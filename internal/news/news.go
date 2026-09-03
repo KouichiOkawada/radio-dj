@@ -163,6 +163,7 @@ func Fetch(feeds []Feed) []Item {
 	seen := map[string]bool{}
 	var out []Item
 	for _, feed := range feeds {
+		added := 0
 		if strings.TrimSpace(feed.URL) == "" {
 			continue
 		}
@@ -208,8 +209,11 @@ func Fetch(feeds []Feed) []Item {
 				image = e.Enclosure.URL
 			}
 			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published, ImageURL: image})
-			if len(out) >= 80 {
-				return out
+			added++
+			// Keep one high-volume feed from starving economy, world, and BBC
+			// feeds further down the configured list.
+			if added >= 20 {
+				break
 			}
 		}
 	}
