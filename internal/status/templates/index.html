@@ -211,6 +211,56 @@
     .brand{ font-size:12px; }
     .stack{ gap:9px; }
   }
+  /* Desktop console: a persistent information layout instead of a scaled-up phone stack. */
+  .dj-card{ padding:16px; background:#f3e8fd; }
+  .dj-card[hidden]{ display:none; }
+  .dj-kicker{ font:900 11px var(--font-mono); letter-spacing:1.5px; color:#5d3478; }
+  .dj-text{ margin-top:8px; font-size:15px; font-weight:700; line-height:1.6; }
+  @media (min-width:900px){
+    :root{ --bg:#f3f6fa; --paper:#fff; --ink:#15202b; --soft:#5f6b78; --line:#d8e0e8; --onair:#d8463a; }
+    body{ align-items:stretch; padding:28px clamp(24px,4vw,64px) 40px;
+      background-image:radial-gradient(circle at 12% 0,#dcecf6 0,transparent 29%),radial-gradient(circle at 100% 10%,#f7e4d3 0,transparent 25%),linear-gradient(135deg,#f6f8fb,#e9eff6); }
+    .stack{ max-width:1480px; margin:0 auto; grid-template-columns:minmax(250px,.72fr) minmax(460px,1.45fr) minmax(290px,.83fr); grid-template-areas:
+      'bar bar bar'
+      'tabs cassette news'
+      'panel cassette dj'
+      'panel transport mode'
+      'panel transport volume'
+      'ask ask ask'; gap:18px; align-items:start; }
+    .blk{ border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 26px rgba(23,40,58,.09); }
+    .bar{ grid-area:bar; border-radius:16px; overflow:hidden; min-height:66px; }
+    .bar > *{ padding:18px 22px; border-color:var(--line); }
+    .brand{ background:#192a3a; color:#fff; font-size:17px; }
+    .freq{ background:#edf3f7; color:#465867; }
+    .playing .onair{ background:#d8463a; }
+    .card{ display:none; }
+    .cass-wrap{ grid-area:cassette; padding:30px 34px 8px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,#fff,#f3f7fa); box-shadow:0 10px 26px rgba(23,40,58,.09); }
+    .cass{ filter:drop-shadow(9px 14px 9px rgba(21,32,43,.25)); }
+    .news-card{ grid-area:news; padding:20px; background:#eef7f1; min-height:190px; }
+    .news-grid{ grid-template-columns:120px minmax(0,1fr); gap:15px; }
+    .news-image{ width:120px; height:92px; border:0; border-radius:10px; }
+    .news-title{ font-size:17px; line-height:1.45; }
+    .news-meta,.news-desc{ font-size:12px; line-height:1.55; }
+    .dj-card{ grid-area:dj; min-height:128px; }
+    .mode-card{ grid-area:mode; display:grid; grid-template-columns:1fr; padding:18px; gap:9px; }
+    .mode-card strong{ margin:0 0 3px; }
+    .mode-button{ text-align:left; padding:11px 12px; border:1px solid var(--line); border-radius:9px; background:#fff; font-size:12px; transition:background .15s,transform .15s; }
+    .mode-button:hover{ background:#edf4f7; transform:translateY(-1px); }
+    .mode-button.active{ background:#cfe8d1; box-shadow:none; border-color:#7bb883; }
+    .volume-card{ grid-area:volume; padding:18px; flex-wrap:wrap; }
+    .volume-card label{ width:100%; font-size:12px; }
+    .volume-card input{ min-width:0; }
+    .deck-panel{ grid-area:transport; margin:0; padding:20px; border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 26px rgba(23,40,58,.09); background:#e8eef3; }
+    .key .cap{ height:78px; border:1px solid #aebbc6; border-radius:10px; box-shadow:0 4px 0 #9baab7; }
+    .tab-bar{ grid-area:tabs; display:grid; grid-template-columns:1fr; margin:0; gap:8px; }
+    .tab{ border:1px solid var(--line); border-radius:10px; box-shadow:none; text-align:left; padding:13px 14px; color:var(--ink)!important; background:#fff!important; }
+    .tab.active{ transform:none; box-shadow:inset 4px 0 0 var(--onair); background:#fff3ee!important; }
+    .tab-panel{ grid-area:panel; align-self:start; margin:0; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:0 10px 26px rgba(23,40,58,.09); overflow:hidden; }
+    .tab-body{ max-height:400px; overflow:auto; padding:16px; }
+    .ask{ grid-area:ask; padding:20px; }
+    .ask input,.ask button{ border:1px solid var(--line); }
+    .ask button{ border-radius:0 9px 9px 0; }
+  }
   @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -240,6 +290,11 @@
           <a class="news-link" id="news-link" target="_blank" rel="noopener noreferrer" hidden>記事を開く</a>
         </div>
       </div>
+    </section>
+
+    <section class="blk dj-card" id="dj-card" hidden aria-live="polite">
+      <div class="dj-kicker">AI DJ COMMENTARY</div>
+      <div class="dj-text" id="dj-text"></div>
     </section>
 
     <div class="blk volume-card">
@@ -638,6 +693,7 @@
     const c = j.current||{};
     setModeUI(j.mode || 'radio');
     const newsCard = $('news-card');
+    const djCard = $('dj-card');
     if(c.type === 'news'){
       newsCard.hidden = false;
       $('news-title').textContent = c.title || 'ニュース';
@@ -651,6 +707,12 @@
       if(c.image_url) image.src = c.image_url;
     } else {
       newsCard.hidden = true;
+    }
+    if(c.type === 'dj'){
+      djCard.hidden = false;
+      $('dj-text').textContent = c.speech_text || c.title || '';
+    } else {
+      djCard.hidden = true;
     }
     if(c.title && c.title !== lastTitle){
       if(lastTitle !== null){

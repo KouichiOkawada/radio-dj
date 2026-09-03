@@ -435,10 +435,11 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &item, Text: bulletin})
 		if djx != nil && vox != nil {
 			comment := djx.Say("次のニュースについて、事実を追加・要約・断定せず、聞き手が考えるきっかけになる短いラジオDJの一言を日本語で話してください。記事: " + item.Title)
-			if comment != "" {
-				if vf, err := vox.Speak(comment); err == nil {
-					segs = append(segs, Segment{Path: vf, IsDJ: true, Text: comment})
-				}
+			if comment == "" {
+				comment = "ニュースは状況が変わることがあります。続報は信頼できる情報源で確認していきましょう。"
+			}
+			if vf, err := vox.Speak(comment); err == nil {
+				segs = append(segs, Segment{Path: vf, IsDJ: true, Text: comment})
 			}
 		}
 		return true
