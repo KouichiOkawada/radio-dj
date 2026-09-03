@@ -123,6 +123,22 @@ func (d *DJ) Say(user string) string {
 	return d.complete(user, false)
 }
 
+// NewsComment is a grounded post-news reaction. The model may have a point of
+// view, but every factual input is constrained to the RSS title/description
+// supplied here. It must not guess the next programme segment.
+func (d *DJ) NewsComment(source, title, description string) string {
+	prompt := "ニュース読み上げ直後のDJコメントを日本語で話してください。2〜4文程度です。" +
+		"ニュースの内容について、あなた自身の感想、気になる点、聞き手への問いかけのどれかを自然に含めてください。" +
+		"ただし、下にない事実、数字、原因、背景、人物の発言は追加しないでください。推測は断定せず、感想と事実を区別してください。" +
+		"次に何が放送されるかは分からないので、それでは音楽をどうぞ、次は曲です、続いて音楽です、などの進行予告は絶対に言わないでください。" +
+		"ニュースの復唱だけで終わらず、ラジオDJらしい短い雑談としてまとめてください。\n" +
+		"出典: " + source + "\n見出し: " + title
+	if strings.TrimSpace(description) != "" {
+		prompt += "\nRSS概要: " + description
+	}
+	return stripUnknownForwardCue(d.complete(prompt, false))
+}
+
 // SaySearch runs a completion WITH web search enabled (GLM's web_search tool),
 // for live facts. Used by SayWiki.
 func (d *DJ) SaySearch(user string) string {
@@ -346,6 +362,15 @@ func extractJSON(s string) string {
 		}
 	}
 	return s[i:]
+}
+
+// stripUnknownForwardCue is a final guard for news commentary. Prompting is
+// the primary control; this removes an occasional model-generated transition
+// to music when the scheduler has not actually promised a song next.
+var unknownForwardCueRx = regexp.MustCompile(`(?:それでは|では|このあと|続いて|次は)[^。！？\n]{0,60}(?:音楽|曲)[^。！？\n]*[。！？]?`)
+
+func stripUnknownForwardCue(s string) string {
+	return strings.TrimSpace(unknownForwardCueRx.ReplaceAllString(s, ""))
 }
 
 // stripEmoji removes emoji + misc symbols the TTS would read aloud or garble.
