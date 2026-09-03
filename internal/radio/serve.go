@@ -278,7 +278,13 @@ func Serve(cfg config.Config) error {
 				continue
 			}
 			if seg.IsDJ {
-				st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
+				if seg.News != nil {
+					// A post-news discussion belongs to the article that prompted it.
+					// Keep its title, source and image visible for the whole talk.
+					st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
+				} else {
+					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
+				}
 				logDJ(status.LogKindDJ, seg.Text)
 				if err := streamer.Play(seg.Path); err != nil {
 					log.Printf("[dj] segment error: %v", err)
@@ -508,6 +514,25 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		} else {
 			log.Printf("[request] no match %q", req.Text)
 		}
+	}
+
+	// Radio mode always returns from a news article through an explicit song
+	// introduction. This is kept out of the news-continuous branch above, where
+	// the requested flow is article → DJ discussion → next article.
+	if didNews {
+		for i := 0; i < cfg.Chunk; i++ {
+			if t, e := lib.Next(); e == nil {
+				if i == 0 && cfg.DJEnabled && djx != nil {
+					addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
+				}
+				addTrack(t)
+				*trackCount++
+			}
+		}
+		if len(segs) == 0 {
+			return nil, "", fmt.Errorf("news: no music after bulletin")
+		}
+		return segs, reqs, nil
 	}
 
 	// DJ Director: one structured GLM call plans the whole setlist + talk breaks.

@@ -139,6 +139,23 @@ func (d *DJ) NewsComment(source, title, description string) string {
 	return stripUnknownForwardCue(d.complete(prompt, false))
 }
 
+// NewsCommentary is the long-form, grounded companion for one article. It
+// deliberately has a larger completion budget than ordinary song banter: at a
+// natural Japanese TTS pace 700–900 characters is roughly three minutes. The
+// supplied RSS facts remain the hard boundary; interpretation must be clearly
+// framed as the DJ's own view.
+func (d *DJ) NewsCommentary(source, title, description string) string {
+	prompt := "いま読み上げたニュースについて、日本語のラジオDJとして約3分間、700〜900文字を目安に話してください。" +
+		"最初に、下の見出しと概要だけを使って聞き手に分かりやすく要点を言い換えてください。続いて、この話題が気になる理由、生活や市場で注目したい観点、聞き手への穏やかな問いかけを、DJ自身の私見として自然に話してください。" +
+		"下にない事実、数字、原因、背景、人物の発言は絶対に追加しないでください。事実と感想を混同せず、推測は『かもしれません』『注目したいですね』のように表現してください。" +
+		"次の曲や次のニュースを予告せず、『音楽をどうぞ』『続いて』などの進行も言わないでください。箇条書き・見出しは使わず、自然な話し言葉だけで返してください。\n" +
+		"出典: " + source + "\n見出し: " + title
+	if strings.TrimSpace(description) != "" {
+		prompt += "\nRSS概要: " + description
+	}
+	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 900))
+}
+
 // SaySearch runs a completion WITH web search enabled (GLM's web_search tool),
 // for live facts. Used by SayWiki.
 func (d *DJ) SaySearch(user string) string {
@@ -215,6 +232,10 @@ func (d *DJ) complete(user string, search bool) string {
 		// completion budget. A small budget leaves content empty.
 		maxTokens = 1200
 	}
+	return d.completeWithTokens(user, search, maxTokens)
+}
+
+func (d *DJ) completeWithTokens(user string, search bool, maxTokens int) string {
 	body := map[string]any{
 		"model": d.model,
 		"messages": []map[string]string{

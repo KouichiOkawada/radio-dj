@@ -31,7 +31,7 @@ type preparedNews struct {
 	segments []Segment
 }
 
-const newsStockSize = 1
+const newsStockSize = 4
 
 func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock, st *status.Server) *newsPreloader {
 	p := &newsPreloader{
@@ -62,9 +62,9 @@ func (p *newsPreloader) publish(state string) {
 
 func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock) {
 	for {
-		// Keep several complete breaks ready while music, news, or DJ commentary
-		// is on air. Four items cover normal local LLM/TTS latency without letting
-		// temporary audio or old headlines accumulate without bound.
+		// Keep several complete, article-sized breaks ready while music, news, or
+		// DJ commentary is on air. Each entry has its own metadata, so the player
+		// can switch its article card exactly when the next story begins.
 		if len(p.ready) >= cap(p.ready) {
 			p.publish("ready")
 			time.Sleep(2 * time.Second)
@@ -73,23 +73,19 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 
 		p.publish("loading")
 		slot := clock.Next(time.Now())
-		items := queue.ReserveBulletin(store.Snapshot(), slot.Kind)
-		if len(items) == 0 {
+		item, ok := queue.ReserveItems(store.Snapshot(), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
+		if !ok {
 			// Quiet feeds are normal. Keep music on air and poll again later.
 			p.publish("waiting")
 			time.Sleep(30 * time.Second)
 			continue
 		}
 
-		for i := range items {
-			news.ResolveImage(&items[i])
-		}
-		bulletin := strings.TrimSpace(news.Script(items, cfg.Language))
+		news.ResolveImage(&item)
+		bulletin := strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
 		if bulletin == "" {
-			log.Printf("[news] preload skipped empty bulletin")
-			for _, item := range items {
-				queue.Release(item)
-			}
+			log.Printf("[news] preload skipped empty bulletin: %s", item.Title)
+			queue.Release(item)
 			time.Sleep(2 * time.Second)
 			continue
 		}
@@ -97,9 +93,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		speechPath, err := vox.Speak(bulletin)
 		if err != nil {
 			log.Printf("[news] preload TTS: %v", err)
-			for _, item := range items {
-				queue.Release(item)
-			}
+			queue.Release(item)
 			p.publish("loading")
 			time.Sleep(5 * time.Second)
 			continue
@@ -113,15 +107,15 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			mixedPath = speechPath
 		}
 
-		segments := []Segment{{Path: mixedPath, IsNews: true, News: &items[0], NewsItems: items, Text: bulletin}}
+		segments := []Segment{{Path: mixedPath, IsNews: true, News: &item, NewsItems: []news.Item{item}, Text: bulletin}}
 
 		// The commentary is opinion/personality only. It is grounded on the RSS
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
 		if djx != nil {
-			comment := strings.TrimSpace(djx.NewsComment(items[0].Source, items[0].Title, items[0].Description))
+			comment := strings.TrimSpace(djx.NewsCommentary(item.Source, item.Title, item.Description))
 			if comment == "" {
-				comment = "この話題、これからどう動くのか気になりますね。続報も確認していきたいところです。"
+				comment = "このニュースの内容を受け止めながら、続報と周囲への影響を落ち着いて見ていきたいですね。"
 			}
 			if commentPath, cerr := vox.Speak(comment); cerr == nil {
 				// Keep the same bed underneath the DJ reaction so the whole news
@@ -131,14 +125,16 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 					log.Printf("[news] preload DJ mix: %v", merr)
 					commentMixed = commentPath
 				}
-				segments = append(segments, Segment{Path: commentMixed, IsDJ: true, Text: comment})
+				// Keep the related article on screen throughout the commentary instead
+				// of replacing it with a generic AI DJ card.
+				segments = append(segments, Segment{Path: commentMixed, IsDJ: true, News: &item, Text: comment})
 			} else {
 				log.Printf("[news] preload DJ voice: %v", cerr)
 			}
 		}
 
 		p.ready <- preparedNews{kind: slot.Kind, segments: segments}
-		log.Printf("[news] READY %s %d/%d: %s", slot.Kind, len(p.ready), cap(p.ready), items[0].Title)
+		log.Printf("[news] READY %s %d/%d: %s", slot.Kind, len(p.ready), cap(p.ready), item.Title)
 		p.publish("ready")
 	}
 }
