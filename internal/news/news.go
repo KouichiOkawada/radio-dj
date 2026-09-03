@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,17 @@ func NewQueue(stateDir string) *Queue {
 func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	// A station that calls something "news" should not silently work through
+	// a multi-day backlog. Keep the configurable window, but cap overly broad
+	// legacy values at 24h. A caller can still use <=24h for a tighter window.
+	if maxAge > 24*time.Hour {
+		maxAge = 24 * time.Hour
+	}
+
+	// Fetch sorts globally by publication time, so this always chooses the
+	// newest unseen entry across all configured feeds instead of exhausting the
+	// first feed before considering fresher stories from later feeds.
 	for _, item := range Fetch(feeds) {
 		if !fresh(item.PublishedAt, maxAge) {
 			continue
@@ -100,17 +112,43 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	return Item{}, false
 }
 
+var publishedLayouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	time.RFC1123Z,
+	time.RFC1123,
+	time.RFC822Z,
+	time.RFC822,
+	time.RFC850,
+	time.ANSIC,
+	"Mon, 2 Jan 2006 15:04:05 -0700",
+	"Mon, 2 Jan 2006 15:04:05 MST",
+	"2 Jan 2006 15:04:05 -0700",
+}
+
+func parsePublished(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range publishedLayouts {
+		if published, err := time.Parse(layout, value); err == nil {
+			return published, true
+		}
+	}
+	return time.Time{}, false
+}
+
 func fresh(value string, maxAge time.Duration) bool {
 	if maxAge <= 0 {
 		return true
 	}
-	for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC3339} {
-		if published, err := time.Parse(layout, value); err == nil {
-			age := time.Since(published)
-			return age >= -15*time.Minute && age <= maxAge
-		}
+	published, ok := parsePublished(value)
+	if !ok {
+		return false // without a publication date it cannot be called current news
 	}
-	return false // without a publication date it cannot be called current news
+	age := time.Since(published)
+	return age >= -15*time.Minute && age <= maxAge
 }
 
 func (q *Queue) prune() {
@@ -140,15 +178,21 @@ type document struct {
 }
 
 type entry struct {
-	Title       string `xml:"title"`
-	Description string `xml:"description"`
-	Summary     string `xml:"summary"`
-	Link        string `xml:"link"`
-	PubDate     string `xml:"pubDate"`
-	Published   string `xml:"published"`
-	Enclosure   media  `xml:"enclosure"`
-	Media       media  `xml:"content"`
-	Thumbnail   media  `xml:"thumbnail"`
+	Title       string    `xml:"title"`
+	Description string    `xml:"description"`
+	Summary     string    `xml:"summary"`
+	Link        feedLink  `xml:"link"`
+	PubDate     string    `xml:"pubDate"`
+	Published   string    `xml:"published"`
+	Updated     string    `xml:"updated"`
+	Enclosure   media     `xml:"enclosure"`
+	Media       media     `xml:"content"`
+	Thumbnail   media     `xml:"thumbnail"`
+}
+
+type feedLink struct {
+	Href string `xml:"href,attr"`
+	Text string `xml:",chardata"`
 }
 
 type media struct {
@@ -156,8 +200,9 @@ type media struct {
 	Type string `xml:"type,attr"`
 }
 
-// Fetch returns recent, distinct entries across feeds. A failed feed is
-// skipped so news trouble can never stop music playback.
+// Fetch returns distinct entries across feeds, sorted newest-first by their
+// actual publication timestamp. A failed feed is skipped so news trouble can
+// never stop music playback.
 func Fetch(feeds []Feed) []Item {
 	client := &http.Client{Timeout: 10 * time.Second}
 	seen := map[string]bool{}
@@ -201,6 +246,9 @@ func Fetch(feeds []Feed) []Item {
 			if published == "" {
 				published = clean(e.Published)
 			}
+			if published == "" {
+				published = clean(e.Updated)
+			}
 			image := e.Media.URL
 			if image == "" {
 				image = e.Thumbnail.URL
@@ -208,15 +256,34 @@ func Fetch(feeds []Feed) []Item {
 			if image == "" && strings.HasPrefix(e.Enclosure.Type, "image/") {
 				image = e.Enclosure.URL
 			}
-			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: clean(e.Link), PublishedAt: published, ImageURL: image})
+			url := clean(e.Link.Text)
+			if url == "" {
+				url = clean(e.Link.Href)
+			}
+			out = append(out, Item{Source: feed.Name, Title: title, Description: truncate(desc, 180), URL: url, PublishedAt: published, ImageURL: image})
 			added++
-			// Keep one high-volume feed from starving economy, world, and BBC
-			// feeds further down the configured list.
+			// Keep one high-volume feed from consuming unbounded work while still
+			// taking enough candidates to find the globally freshest entry.
 			if added >= 20 {
 				break
 			}
 		}
 	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		a, aok := parsePublished(out[i].PublishedAt)
+		b, bok := parsePublished(out[j].PublishedAt)
+		switch {
+		case aok && bok:
+			return a.After(b)
+		case aok:
+			return true
+		case bok:
+			return false
+		default:
+			return false
+		}
+	})
 	return out
 }
 
@@ -276,6 +343,25 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
+func spokenPublished(value, language string) string {
+	published, ok := parsePublished(value)
+	if !ok {
+		return ""
+	}
+	local := published.Local()
+	now := time.Now()
+	if language == "ja" {
+		if y1, m1, d1 := now.Date(); true {
+			y2, m2, d2 := local.Date()
+			if y1 == y2 && m1 == m2 && d1 == d2 {
+				return fmt.Sprintf("今日%d時%02d分配信", local.Hour(), local.Minute())
+			}
+			return fmt.Sprintf("%d月%d日%d時%02d分配信", int(m2), d2, local.Hour(), local.Minute())
+		}
+	}
+	return local.Format("Jan 2 15:04")
+}
+
 // Script builds an attribution-first bulletin without adding facts not present
 // in the feed. This is deliberately deterministic rather than LLM-written.
 func Script(items []Item, language string) string {
@@ -284,20 +370,27 @@ func Script(items []Item, language string) string {
 	}
 	var b strings.Builder
 	if language == "ja" {
-		b.WriteString("最新ニュースです。")
+		// Do not claim an item is "latest" merely because it is unseen. Queue
+		// already enforces freshness; this wording remains accurate even when a
+		// feed has not published in the last few minutes.
+		b.WriteString("ただいま入っているニュースをお伝えします。")
 		for _, item := range items {
 			source := item.Source
 			if source == "" {
 				source = "配信元"
 			}
-			fmt.Fprintf(&b, "%sによると、%s。", source, item.Title)
+			if when := spokenPublished(item.PublishedAt, language); when != "" {
+				fmt.Fprintf(&b, "%s、%sによると、%s。", when, source, item.Title)
+			} else {
+				fmt.Fprintf(&b, "%sによると、%s。", source, item.Title)
+			}
 			if item.Description != "" {
 				fmt.Fprintf(&b, "概要では、%s。", item.Description)
 			}
 		}
 		return b.String()
 	}
-	b.WriteString("Latest headlines. ")
+	b.WriteString("Here are the current headlines. ")
 	for _, item := range items {
 		fmt.Fprintf(&b, "%s reports: %s. ", item.Source, item.Title)
 		if item.Description != "" {
