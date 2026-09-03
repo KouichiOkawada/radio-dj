@@ -25,6 +25,7 @@ import (
 	"radio-dj/internal/i18n"
 	"radio-dj/internal/icecast"
 	"radio-dj/internal/library"
+	"radio-dj/internal/news"
 	"radio-dj/internal/skills"
 	"radio-dj/internal/status"
 	"radio-dj/internal/supervisor"
@@ -349,6 +350,14 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	addTrack := func(t library.Track) {
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
+	// News is generated from RSS text directly, with attribution. No LLM is
+	// involved in the bulletin, so an unavailable model or a hallucination can
+	// never change the reported facts.
+	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
+		if bulletin := news.Script(news.Fetch(toNewsFeeds(cfg.NewsFeeds)), cfg.Language); bulletin != "" {
+			addVoice(bulletin, false)
+		}
+	}
 
 	matched := 0
 	var reqCtx []dj.Req
@@ -476,6 +485,14 @@ func libCands(ts []library.Track) []dj.Cand {
 	out := make([]dj.Cand, len(ts))
 	for i, t := range ts {
 		out[i] = dj.Cand{ID: i, Title: t.Title, Artist: t.Artist, Album: t.Album}
+	}
+	return out
+}
+
+func toNewsFeeds(feeds []config.NewsFeed) []news.Feed {
+	out := make([]news.Feed, len(feeds))
+	for i, f := range feeds {
+		out[i] = news.Feed{Name: f.Name, URL: f.URL}
 	}
 	return out
 }

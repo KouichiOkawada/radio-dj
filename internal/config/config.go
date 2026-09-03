@@ -40,6 +40,8 @@ type Config struct {
 	Voice         string // voice id for the provider
 	VoiceCmd      string // raw override (power users); empty = use provider+voice
 	Bed           string
+	NewsEvery     int
+	NewsFeeds     []NewsFeed
 
 	LocationName string
 	Latitude     float64
@@ -50,30 +52,38 @@ type Config struct {
 	StateDir   string
 }
 
+// NewsFeed is an RSS or Atom endpoint used for the attributed news bulletin.
+type NewsFeed struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
 // fileConfig is the onboarding-persisted shape (user-settable fields only).
 type fileConfig struct {
-	Library       string  `json:"library,omitempty"`
-	Source        string  `json:"source,omitempty"`
-	NavidromeURL  string  `json:"navidrome_url,omitempty"`
-	NavidromeUser string  `json:"navidrome_user,omitempty"`
-	NavidromePass string  `json:"navidrome_pass,omitempty"`
-	GLMAPIKey     string  `json:"glm_api_key,omitempty"`
-	GLMBaseURL    string  `json:"glm_base_url,omitempty"`
-	GLMModel      string  `json:"glm_model,omitempty"`
-	LLMProvider   string  `json:"llm_provider,omitempty"`
-	VoiceProvider string  `json:"voice_provider,omitempty"`
-	Voice         string  `json:"voice,omitempty"`
-	VoiceCmd      string  `json:"voice_cmd,omitempty"`
-	Location      string  `json:"location,omitempty"`
-	Latitude      float64 `json:"lat,omitempty"`
-	Longitude     float64 `json:"lon,omitempty"`
-	Language      string  `json:"language,omitempty"`
-	DJEvery       int     `json:"dj_every,omitempty"`
-	DJTalk        string  `json:"dj_talk,omitempty"`
-	Chunk         int     `json:"chunk,omitempty"`
-	Bitrate       int     `json:"bitrate,omitempty"`
-	StationName   string  `json:"station_name,omitempty"`
-	Bed           string  `json:"bed,omitempty"`
+	Library       string     `json:"library,omitempty"`
+	Source        string     `json:"source,omitempty"`
+	NavidromeURL  string     `json:"navidrome_url,omitempty"`
+	NavidromeUser string     `json:"navidrome_user,omitempty"`
+	NavidromePass string     `json:"navidrome_pass,omitempty"`
+	GLMAPIKey     string     `json:"glm_api_key,omitempty"`
+	GLMBaseURL    string     `json:"glm_base_url,omitempty"`
+	GLMModel      string     `json:"glm_model,omitempty"`
+	LLMProvider   string     `json:"llm_provider,omitempty"`
+	VoiceProvider string     `json:"voice_provider,omitempty"`
+	Voice         string     `json:"voice,omitempty"`
+	VoiceCmd      string     `json:"voice_cmd,omitempty"`
+	Location      string     `json:"location,omitempty"`
+	Latitude      float64    `json:"lat,omitempty"`
+	Longitude     float64    `json:"lon,omitempty"`
+	Language      string     `json:"language,omitempty"`
+	DJEvery       int        `json:"dj_every,omitempty"`
+	DJTalk        string     `json:"dj_talk,omitempty"`
+	Chunk         int        `json:"chunk,omitempty"`
+	Bitrate       int        `json:"bitrate,omitempty"`
+	StationName   string     `json:"station_name,omitempty"`
+	Bed           string     `json:"bed,omitempty"`
+	NewsEvery     int        `json:"news_every,omitempty"`
+	NewsFeeds     []NewsFeed `json:"news_feeds,omitempty"`
 }
 
 // normalizeTalk canonicalizes the talkiness dial to English keys, accepting
@@ -121,6 +131,8 @@ func Load() Config {
 		Voice:           pick("RDJ_VOICE", f.Voice, ""),
 		VoiceCmd:        firstNonEmpty(os.Getenv("RDJ_VOICE_CMD"), f.VoiceCmd),
 		Bed:             firstNonEmpty(os.Getenv("RDJ_BED"), f.Bed),
+		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
+		NewsFeeds:       f.NewsFeeds,
 		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
 		Latitude:        pickFloat("RDJ_LAT", f.Latitude, -16.5),
 		Longitude:       pickFloat("RDJ_LON", f.Longitude, -68.15),
