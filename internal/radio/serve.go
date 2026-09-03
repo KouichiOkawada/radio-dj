@@ -49,6 +49,23 @@ type Segment struct {
 // spoken clock to it so /dj-log can surface what aired (the feedback view).
 var djLogPath string
 
+type playbackMode struct {
+	mu   sync.RWMutex
+	mode string
+}
+
+func newPlaybackMode(mode string) *playbackMode { return &playbackMode{mode: mode} }
+func (p *playbackMode) Get() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.mode
+}
+func (p *playbackMode) Set(mode string) {
+	p.mu.Lock()
+	p.mode = mode
+	p.mu.Unlock()
+}
+
 func logDJ(kind, text string) {
 	if djLogPath == "" {
 		return
@@ -76,6 +93,15 @@ func Serve(cfg config.Config) error {
 	}
 	st := status.New(cfg.StateDir, cfg.NeedsSetup(), cfg.IcecastMount)
 	st.SetLanguage(cfg.Language)
+	modes := newPlaybackMode(cfg.PlayMode)
+	st.SetModeHandler(cfg.PlayMode, func(mode string) bool {
+		if err := config.SavePlaybackMode(cfg.StateDir, mode); err != nil {
+			log.Printf("[mode] save: %v", err)
+			return false
+		}
+		modes.Set(mode)
+		return true
+	})
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
 	st.ListenAndServeHTTP(cfg.StatusPort)
 	log.Printf("[radio-dj] UI :%d · stream :%d/stream.aac · POST /request", cfg.StatusPort, cfg.IcecastPort)
@@ -183,7 +209,7 @@ func Serve(cfg config.Config) error {
 	go func() {
 		tc := 0
 		for {
-			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, &tc)
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, modes.Get(), &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
 				time.Sleep(10 * time.Second)
@@ -345,7 +371,7 @@ func Serve(cfg config.Config) error {
 // buildTanda returns the ordered segments for one batch (requested songs
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
-func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, trackCount *int) (segs []Segment, reqs string, err error) {
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, trackCount *int) (segs []Segment, reqs string, err error) {
 	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
@@ -360,21 +386,48 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	addTrack := func(t library.Track) {
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
+	addNews := func() bool {
+		if vox == nil || len(cfg.NewsFeeds) == 0 {
+			return false
+		}
+		items := news.Fetch(toNewsFeeds(cfg.NewsFeeds))
+		bulletin := news.Script(items, cfg.Language)
+		if bulletin == "" {
+			return false
+		}
+		vf, verr := vox.Speak(bulletin)
+		if verr != nil {
+			log.Printf("[news] TTS: %v", verr)
+			return false
+		}
+		mixed, merr := news.MixWithBed("", vf, cfg.NewsBGMPath, filepath.Join(cfg.StateDir, "news"), cfg.Audio.NewsBGMVolume)
+		if merr != nil {
+			log.Printf("[news] skipped: %v", merr)
+			return false
+		}
+		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &items[0], Text: bulletin})
+		return true
+	}
+	if mode == "news" {
+		if !addNews() {
+			return nil, "", fmt.Errorf("news mode: no bulletin ready")
+		}
+		return segs, "", nil
+	}
+	if mode == "music" {
+		for i := 0; i < cfg.Chunk; i++ {
+			if t, e := lib.Next(); e == nil {
+				addTrack(t)
+				*trackCount++
+			}
+		}
+		return segs, "", nil
+	}
 	// News is generated from RSS text directly, with attribution. No LLM is
 	// involved in the bulletin, so an unavailable model or a hallucination can
 	// never change the reported facts.
 	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
-		items := news.Fetch(toNewsFeeds(cfg.NewsFeeds))
-		if bulletin := news.Script(items, cfg.Language); bulletin != "" {
-			vf, verr := vox.Speak(bulletin)
-			if verr != nil {
-				log.Printf("[news] TTS: %v", verr)
-			} else if mixed, merr := news.MixWithBed("", vf, cfg.NewsBGMPath, filepath.Join(cfg.StateDir, "news"), cfg.Audio.NewsBGMVolume); merr != nil {
-				log.Printf("[news] skipped: %v", merr)
-			} else {
-				segs = append(segs, Segment{Path: mixed, IsNews: true, News: &items[0], Text: bulletin})
-			}
-		}
+		_ = addNews()
 	}
 
 	matched := 0

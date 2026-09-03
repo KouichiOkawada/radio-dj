@@ -48,6 +48,7 @@ type Request struct {
 }
 
 type NowPlaying struct {
+	Mode      string    `json:"mode,omitempty"`
 	Current   Track     `json:"current"`
 	Next      *Track    `json:"next,omitempty"`
 	History   []Track   `json:"history,omitempty"`
@@ -65,8 +66,10 @@ type Server struct {
 	requests       []Request // raw, unresolved
 	needsSetup     bool
 	controlHandler func(string) bool // radio-loop skip callback (POST /control); nil = no radio
-	lang           string            // config.Language ("es"|"en") — drives the index UI strings
-	mount          string            // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
+	modeHandler    func(string) bool
+	mode           string
+	lang           string // config.Language ("es"|"en") — drives the index UI strings
+	mount          string // icecast mount (e.g. /stream.aac) — drives reverse proxy + <audio> src
 	// icecast admin API for listener counts (lazy, cached 3s)
 	icBase      string
 	icPw        string
@@ -96,6 +99,29 @@ func (s *Server) SetControlHandler(h func(string) bool) {
 	s.mu.Lock()
 	s.controlHandler = h
 	s.mu.Unlock()
+}
+
+// SetModeHandler connects the UI mode switcher to the radio producer.
+func (s *Server) SetModeHandler(mode string, h func(string) bool) {
+	s.mu.Lock()
+	s.mode = mode
+	s.modeHandler = h
+	s.mu.Unlock()
+}
+
+func (s *Server) setMode(mode string) bool {
+	s.mu.RLock()
+	h := s.modeHandler
+	s.mu.RUnlock()
+	if h == nil || !h(mode) {
+		return false
+	}
+	s.mu.Lock()
+	s.mode = mode
+	s.cur.Mode = mode
+	s.mu.Unlock()
+	go s.broadcast()
+	return true
 }
 
 // requestControl forwards a control action to the radio loop. Returns whether
@@ -203,6 +229,7 @@ func (s *Server) Current() NowPlaying {
 		np.Requests = append([]Request(nil), s.requests...)
 	}
 	np.Listeners = s.icListeners
+	np.Mode = s.mode
 	stale := s.icBase != "" && time.Since(s.icCacheT) > 3*time.Second
 	s.mu.RUnlock()
 	if stale {
@@ -364,6 +391,32 @@ func (s *Server) ListenAndServeHTTP(port int) {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"on-air"}`))
+	})
+	mux.HandleFunc("/playback-mode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			s.mu.RLock()
+			mode := s.mode
+			s.mu.RUnlock()
+			_ = json.NewEncoder(w).Encode(map[string]string{"mode": mode})
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.Error(w, "GET or PUT only", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Mode != "radio" && body.Mode != "music" && body.Mode != "news") {
+			http.Error(w, `{"error":"mode must be radio, music, or news"}`, http.StatusBadRequest)
+			return
+		}
+		if !s.setMode(body.Mode) {
+			http.Error(w, `{"error":"mode switch unavailable"}`, http.StatusConflict)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"mode": body.Mode})
 	})
 	mux.HandleFunc("/request", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {

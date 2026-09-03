@@ -45,6 +45,7 @@ type Config struct {
 	NewsBGMPath   string
 	NewsBGMVolume float64
 	Audio         AudioSettings
+	PlayMode      string
 
 	LocationName string
 	Latitude     float64
@@ -99,6 +100,7 @@ type fileConfig struct {
 	NewsBGMPath   string        `json:"news_bgm_path,omitempty"`
 	NewsBGMVolume float64       `json:"news_bgm_volume,omitempty"`
 	Audio         AudioSettings `json:"audio,omitempty"`
+	PlayMode      string        `json:"play_mode,omitempty"`
 }
 
 // normalizeTalk canonicalizes the talkiness dial to English keys, accepting
@@ -149,8 +151,9 @@ func Load() Config {
 		NewsEvery:       pickInt("RDJ_NEWS_EVERY", f.NewsEvery, 0),
 		NewsFeeds:       f.NewsFeeds,
 		NewsBGMPath:     pick("RDJ_NEWS_BGM_PATH", f.NewsBGMPath, `C:\Radio\assets\news-bed.mp3`),
-		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
+		NewsBGMVolume:   pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.35),
 		Audio:           normalizeAudio(f.Audio, f.NewsBGMVolume),
+		PlayMode:        normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
 		LocationName:    pick("RDJ_LOCATION", f.Location, "La Paz"),
 		Latitude:        pickFloat("RDJ_LAT", f.Latitude, -16.5),
 		Longitude:       pickFloat("RDJ_LON", f.Longitude, -68.15),
@@ -166,6 +169,36 @@ func Load() Config {
 	return c
 }
 
+func normalizePlayMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "music", "news", "radio":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "radio"
+	}
+}
+
+// SavePlaybackMode updates only the persisted playback mode, preserving all
+// other user settings in config.json.
+func SavePlaybackMode(dir, mode string) error {
+	mode = normalizePlayMode(mode)
+	path := filepath.Join(dir, "config.json")
+	var raw map[string]json.RawMessage
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &raw)
+	}
+	if raw == nil {
+		raw = map[string]json.RawMessage{}
+	}
+	b, _ := json.Marshal(mode)
+	raw["play_mode"] = b
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
 func normalizeAudio(a AudioSettings, legacyNews float64) AudioSettings {
 	if a.MasterVolume == 0 {
 		a.MasterVolume = 0.8
@@ -179,7 +212,7 @@ func normalizeAudio(a AudioSettings, legacyNews float64) AudioSettings {
 	if a.NewsBGMVolume == 0 {
 		a.NewsBGMVolume = legacyNews
 		if a.NewsBGMVolume == 0 {
-			a.NewsBGMVolume = 0.15
+			a.NewsBGMVolume = 0.35
 		}
 	}
 	return a

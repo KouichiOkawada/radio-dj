@@ -54,6 +54,10 @@
   .volume-card label{ font-family:var(--font-mono); font-size:11px; font-weight:900; white-space:nowrap; }
   .volume-card input{ flex:1; accent-color:var(--onair); }
   .volume-card output{ font-family:var(--font-mono); font-weight:900; font-size:12px; min-width:38px; text-align:right; }
+  .mode-card{ padding:11px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .mode-card strong{ font-family:var(--font-mono); font-size:11px; margin-right:auto; }
+  .mode-button{ border:2px solid var(--line); background:#f7efdc; padding:7px 9px; font:800 10px var(--font-ui); cursor:pointer; }
+  .mode-button.active{ background:var(--sage); box-shadow:2px 2px 0 var(--line); }
 
   /* ── Barra superior ── */
   .bar{ display:flex; align-items:stretch; }
@@ -242,6 +246,13 @@
       <label for="listen-volume">再生音量</label>
       <input id="listen-volume" type="range" min="0" max="100" value="80" aria-label="再生音量">
       <output id="listen-volume-value">80%</output>
+    </div>
+
+    <div class="blk mode-card" id="mode-card">
+      <strong>再生モード</strong>
+      <button class="mode-button" data-mode="radio">ラジオ</button>
+      <button class="mode-button" data-mode="news">ニュース連続</button>
+      <button class="mode-button" data-mode="music">音楽のみ</button>
     </div>
 
     <div class="cass-wrap">
@@ -476,6 +487,13 @@
   };
   setListenVolume(Number.isFinite(savedListenVolume) ? savedListenVolume : 80);
   listenVolume.addEventListener('input', e => setListenVolume(e.target.value));
+  function setModeUI(mode){ document.querySelectorAll('.mode-button').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode)); }
+  document.querySelectorAll('.mode-button').forEach(button=>button.addEventListener('click', async ()=>{
+    try{
+      const r = await fetch('/playback-mode',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:button.dataset.mode})});
+      if(r.ok) setModeUI((await r.json()).mode);
+    }catch(_){}
+  }));
   // src is (re)assigned on every play so stop() can release it and free the
   // progressive-download buffer WebKit otherwise retains after a long session.
   function playStream(){ audio.src = '{{.StreamPath}}'; return audio.play(); }
@@ -618,6 +636,7 @@
 
   function applyNowPlaying(j){
     const c = j.current||{};
+    setModeUI(j.mode || 'radio');
     const newsCard = $('news-card');
     if(c.type === 'news'){
       newsCard.hidden = false;
