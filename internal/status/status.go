@@ -48,14 +48,17 @@ type Request struct {
 }
 
 type NowPlaying struct {
-	Mode      string    `json:"mode,omitempty"`
-	Current   Track     `json:"current"`
-	Next      *Track    `json:"next,omitempty"`
-	History   []Track   `json:"history,omitempty"`
-	Requests  []Request `json:"requests,omitempty"`
-	Playing   bool      `json:"playing"`
-	StartedAt time.Time `json:"startedAt"`
-	Listeners int       `json:"listeners,omitempty"`
+	Mode           string    `json:"mode,omitempty"`
+	Current        Track     `json:"current"`
+	Next           *Track    `json:"next,omitempty"`
+	History        []Track   `json:"history,omitempty"`
+	Requests       []Request `json:"requests,omitempty"`
+	Playing        bool      `json:"playing"`
+	StartedAt      time.Time `json:"startedAt"`
+	Listeners      int       `json:"listeners,omitempty"`
+	NewsReady      bool      `json:"news_ready"`
+	NewsReadyCount int       `json:"news_ready_count"`
+	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | unavailable
 }
 
 type Server struct {
@@ -176,6 +179,31 @@ func (s *Server) MarkPlaying(on bool) {
 	s.mu.Lock()
 	s.cur.Playing = on
 	s.mu.Unlock()
+}
+
+// SetNewsReadiness exposes whether at least one completely rendered bulletin
+// is waiting in the radio-side preload queue. The player uses this to keep the
+// news-only mode unavailable until selecting it cannot force the listener to
+// wait on RSS/TTS/LLM work.
+func (s *Server) SetNewsReadiness(ready bool, count int, state string) {
+	if count < 0 {
+		count = 0
+	}
+	s.mu.Lock()
+	changed := s.cur.NewsReady != ready || s.cur.NewsReadyCount != count || s.cur.NewsState != state
+	s.cur.NewsReady = ready
+	s.cur.NewsReadyCount = count
+	s.cur.NewsState = state
+	s.mu.Unlock()
+	if changed {
+		go s.broadcast()
+	}
+}
+
+func (s *Server) NewsReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cur.NewsReady
 }
 
 // AddRequest enqueues a listener request; returns it with an id-ish hint.
@@ -410,6 +438,10 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Mode != "radio" && body.Mode != "music" && body.Mode != "news") {
 			http.Error(w, `{"error":"mode must be radio, music, or news"}`, http.StatusBadRequest)
+			return
+		}
+		if body.Mode == "news" && !s.NewsReady() {
+			writeJSON(w, http.StatusConflict, `{"error":"news is still preparing"}`)
 			return
 		}
 		if !s.setMode(body.Mode) {
