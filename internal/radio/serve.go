@@ -122,6 +122,11 @@ func Serve(cfg config.Config) error {
 		log.Printf("[radio-dj] DJ off (ZAI_API_KEY + RDJ_VOICE_CMD to enable)")
 	}
 
+	// News rendering is its own background pipeline. It fills a tiny queue of
+	// complete audio breaks while music is already available, so mode switches
+	// and track starts never wait on RSS, OGP, Ollama, edge-tts, or ffmpeg.
+	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, st)
+
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
 	if srcPw == "" {
@@ -220,7 +225,7 @@ func Serve(cfg config.Config) error {
 		tc := 0
 		for {
 			mode := modes.Get()
-			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsQueue, &tc)
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
 				time.Sleep(10 * time.Second)
@@ -397,7 +402,7 @@ func Serve(cfg config.Config) error {
 // buildTanda returns the ordered segments for one batch (requested songs
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
-func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsQueue *news.Queue, trackCount *int) (segs []Segment, reqs string, err error) {
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsPrep *newsPreloader, trackCount *int) (segs []Segment, reqs string, err error) {
 	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
@@ -413,46 +418,22 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
 	addNews := func() bool {
-		if vox == nil || len(cfg.NewsFeeds) == 0 {
-			return false
-		}
-		item, ok := newsQueue.Next(toNewsFeeds(cfg.NewsFeeds), time.Duration(cfg.NewsMaxAgeHours)*time.Hour)
+		prepared, ok := newsPrep.tryTake()
 		if !ok {
 			return false
 		}
-		news.ResolveImage(&item)
-		bulletin := news.Script([]news.Item{item}, cfg.Language)
-		vf, verr := vox.Speak(bulletin)
-		if verr != nil {
-			log.Printf("[news] TTS: %v", verr)
-			return false
-		}
-		mixed, merr := news.MixWithBed("", vf, cfg.NewsBGMPath, filepath.Join(cfg.StateDir, "news"), cfg.Audio.NewsBGMVolume)
-		if merr != nil {
-			log.Printf("[news] skipped: %v", merr)
-			return false
-		}
-		segs = append(segs, Segment{Path: mixed, IsNews: true, News: &item, Text: bulletin})
-		if djx != nil && vox != nil {
-			comment := djx.NewsComment(item.Source, item.Title, item.Description)
-			if comment == "" {
-				comment = "この話題、これからどう動くのか気になりますね。続報も確認していきたいところです。"
-			}
-			if vf, err := vox.Speak(comment); err == nil {
-				segs = append(segs, Segment{Path: vf, IsDJ: true, Text: comment})
-			}
-		}
+		segs = append(segs, prepared...)
 		return true
 	}
 	if mode == "news" {
 		if addNews() {
 			return segs, "", nil
 		}
-		// News-only mode must never become a silence loop when all fresh RSS
-		// entries have already aired. Use one music track as a safe filler and
-		// check for fresh news again on the next producer cycle.
+		// News-only mode must never become a silence loop when the background
+		// renderer is still working or feeds are temporarily quiet. Music is a
+		// safe filler and the next producer cycle checks the ready queue again.
 		if t, e := lib.Next(); e == nil {
-			log.Printf("[news] no fresh bulletin — music fallback")
+			log.Printf("[news] no READY bulletin — music fallback")
 			addTrack(t)
 			*trackCount++
 			return segs, "", nil
@@ -469,9 +450,9 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		return segs, "", nil
 	}
 
-	// News is generated from RSS text directly, with attribution. No LLM is
-	// involved in the factual bulletin. The optional AI segment after it is a
-	// clearly separate DJ reaction grounded only in that RSS item.
+	// The factual bulletin is already rendered by newsPreloader. This cadence
+	// check only decides whether a READY break is inserted at this boundary; it
+	// never performs network/LLM/TTS work on the playback producer path.
 	didNews := false
 	if cfg.DJEnabled && cfg.NewsEvery > 0 && len(cfg.NewsFeeds) > 0 && *trackCount > 0 && *trackCount%cfg.NewsEvery == 0 {
 		didNews = addNews()
@@ -565,8 +546,8 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		for i := 0; i < cfg.Chunk; i++ {
 			if t, e := lib.Next(); e == nil {
 				shouldTalk := cfg.DJEnabled && djx != nil && cfg.DJEvery > 0 && (*trackCount == 0 || *trackCount%cfg.DJEvery == 0)
-				// addNews already appended a grounded DJ reaction; avoid stacking
-				// another speech immediately before the first song after that break.
+				// The preloaded news break already includes its grounded DJ
+				// reaction; avoid stacking another intro immediately after it.
 				if shouldTalk && !(didNews && i == 0) {
 					addVoice(djx.Banter(t.Title, t.Artist, t.Album), false)
 				}
