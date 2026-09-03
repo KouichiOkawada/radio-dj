@@ -278,5 +278,9 @@ func (s *Streamer) Close() {
 func (s *Streamer) KillMaster() {
 	if s.master != nil && s.master.Process != nil {
 		_ = s.master.Process.Kill()
+		// On Windows ProcessState stays nil until Wait is called. Without this,
+		// Alive incorrectly reports a killed encoder as live and the radio loop
+		// never reaches its Icecast reopen path after a dead mount is detected.
+		_ = s.master.Wait()
 	}
 }
