@@ -83,11 +83,11 @@ func (q *Queue) Next(feeds []Feed, maxAge time.Duration) (Item, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// A station that calls something "news" should not silently work through
-	// a multi-day backlog. Keep the configurable window, but cap overly broad
-	// legacy values at 24h. A caller can still use <=24h for a tighter window.
-	if maxAge > 24*time.Hour {
-		maxAge = 24 * time.Hour
+	// The personal station is intended to sound current, not to drain a day-old
+	// backlog. Legacy configs used 72h, so cap them here at six hours. If no
+	// unseen item exists in that window the caller falls back to music.
+	if maxAge <= 0 || maxAge > 6*time.Hour {
+		maxAge = 6 * time.Hour
 	}
 
 	// Fetch sorts globally by publication time, so this always chooses the
@@ -178,16 +178,16 @@ type document struct {
 }
 
 type entry struct {
-	Title       string    `xml:"title"`
-	Description string    `xml:"description"`
-	Summary     string    `xml:"summary"`
-	Link        feedLink  `xml:"link"`
-	PubDate     string    `xml:"pubDate"`
-	Published   string    `xml:"published"`
-	Updated     string    `xml:"updated"`
-	Enclosure   media     `xml:"enclosure"`
-	Media       media     `xml:"content"`
-	Thumbnail   media     `xml:"thumbnail"`
+	Title       string   `xml:"title"`
+	Description string   `xml:"description"`
+	Summary     string   `xml:"summary"`
+	Link        feedLink `xml:"link"`
+	PubDate     string   `xml:"pubDate"`
+	Published   string   `xml:"published"`
+	Updated     string   `xml:"updated"`
+	Enclosure   media    `xml:"enclosure"`
+	Media       media    `xml:"content"`
+	Thumbnail   media    `xml:"thumbnail"`
 }
 
 type feedLink struct {
@@ -351,13 +351,12 @@ func spokenPublished(value, language string) string {
 	local := published.Local()
 	now := time.Now()
 	if language == "ja" {
-		if y1, m1, d1 := now.Date(); true {
-			y2, m2, d2 := local.Date()
-			if y1 == y2 && m1 == m2 && d1 == d2 {
-				return fmt.Sprintf("今日%d時%02d分配信", local.Hour(), local.Minute())
-			}
-			return fmt.Sprintf("%d月%d日%d時%02d分配信", int(m2), d2, local.Hour(), local.Minute())
+		y1, m1, d1 := now.Date()
+		y2, m2, d2 := local.Date()
+		if y1 == y2 && m1 == m2 && d1 == d2 {
+			return fmt.Sprintf("今日%d時%02d分配信", local.Hour(), local.Minute())
 		}
+		return fmt.Sprintf("%d月%d日%d時%02d分配信", int(m2), d2, local.Hour(), local.Minute())
 	}
 	return local.Format("Jan 2 15:04")
 }
