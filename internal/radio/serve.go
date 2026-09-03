@@ -387,7 +387,11 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 	// The LLM picks+orders a coherent arc from a shortlist and decides WHEN to
 	// talk (intro/trivia/wiki/history/time/none), modulated by cfg.DJTalk.
 	// On any failure → random fallback so the station never stops.
-	if cfg.DJEnabled && djx != nil {
+	// A local reasoning model can take longer than Icecast's initial-source
+	// window to create a full structured plan. Start an Ollama station with a
+	// music tanda immediately; later producer cycles can add short segments
+	// without risking silence at station startup.
+	if cfg.DJEnabled && djx != nil && !strings.EqualFold(cfg.LLMProvider, "ollama") {
 		cands := lib.Sample(12)
 		if len(cands) > 0 {
 			ctx := dj.Ctx{
