@@ -33,28 +33,34 @@ type newsPreloader struct {
 	source       string
 	sources      map[string]bool
 	wake         chan struct{}
+	readyMu      sync.Mutex
+	scheduled    map[string]bool
 	generation   atomic.Uint64
 	readyStories atomic.Int32
 }
 
 type preparedNews struct {
-	kind     news.ProgramKind
-	slot     news.ProgramSlot
-	segments []Segment
+	kind       news.ProgramKind
+	slot       news.ProgramSlot
+	segments   []Segment
+	preparedAt time.Time
+	expiresAt  time.Time
+	scheduled  bool
 }
 
 const newsStockSize = 2
 
 func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock, st *status.Server) *newsPreloader {
 	p := &newsPreloader{
-		ready:   make(chan preparedNews, newsStockSize),
-		status:  st,
-		queue:   queue,
-		store:   store,
-		clock:   clock,
-		sources: map[string]bool{},
-		wake:    make(chan struct{}, 1),
-		enabled: vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
+		ready:     make(chan preparedNews, newsStockSize),
+		status:    st,
+		queue:     queue,
+		store:     store,
+		clock:     clock,
+		sources:   map[string]bool{},
+		wake:      make(chan struct{}, 1),
+		scheduled: map[string]bool{},
+		enabled:   vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
 	}
 	for _, feed := range cfg.NewsFeeds {
 		p.sources[feed.Name] = true
@@ -84,6 +90,7 @@ func (p *newsPreloader) publish(state string) {
 func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock) {
 	market := news.NewJQuants(cfg.JQuantsAPIKey)
 	for {
+		p.pruneReady(time.Now())
 		// Keep several complete, article-sized breaks ready while music, news, or
 		// DJ commentary is on air. Each entry has its own metadata, so the player
 		// can switch its article card exactly when the next story begins.
@@ -123,10 +130,8 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			p.wait(30 * time.Second)
 			continue
 		}
+		isScheduled := p.canPrepareScheduled(slot)
 
-		for i := range items {
-			news.ResolveImage(&items[i])
-		}
 		p.status.SetNewsPreview(toNewsStatus(items[0], ""))
 		segments := make([]Segment, 0, len(items)+1)
 		renderFailed := false
@@ -177,14 +182,23 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			marketContext := ""
 			if strings.EqualFold(item.Category, "stock") {
 				ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-				marketContext = market.MarketContext(ctx, cfg.WatchSymbols)
+				symbols := market.ResolveArticleSymbols(ctx, item.Title+" "+item.Description, item.Symbols)
+				marketContext = market.MarketContext(ctx, symbols)
 				cancel()
 				if marketContext != "" {
-					log.Printf("[news] J-Quants context ready for %d watch symbol(s)", len(cfg.WatchSymbols))
+					log.Printf("[news] J-Quants context correlated for %d article symbol(s)", len(symbols))
 				}
 			}
 			log.Printf("[news] AI context: RSS source=%q category=%s J-Quants=%t", item.Source, item.Category, marketContext != "")
-			comment := strings.TrimSpace(djx.NewsBriefComment(item.Source, item.Title, item.Description, marketContext))
+			comment := ""
+			if isScheduled {
+				comment = strings.TrimSpace(djx.NewsBriefComment(item.Source, item.Title, item.Description, marketContext))
+			} else {
+				// The non-scheduled copy is consumed by News Continuous. Give each
+				// story the requested long-form treatment; scheduled radio breaks
+				// retain their shorter reaction so programme timing stays sane.
+				comment = strings.TrimSpace(djx.NewsCommentary(item.Source, item.Title, item.Description, marketContext))
+			}
 			if comment == "" {
 				comment = "「" + item.Title + "」という動きが、これから私たちの暮らしや選択にどう響くのか。事実と今後の変化を分けながら、落ち着いて見ていきたいですね。"
 			}
@@ -210,8 +224,19 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			p.releaseSegments(segments)
 			continue
 		}
+		now := time.Now()
+		expiresAt := now.Add(30 * time.Minute)
+		if isScheduled {
+			expiresAt = slot.At.Add(10 * time.Minute)
+		}
+		prepared := preparedNews{kind: slot.Kind, slot: slot, segments: segments, preparedAt: now, expiresAt: expiresAt, scheduled: isScheduled}
+		p.readyMu.Lock()
+		if isScheduled {
+			p.scheduled[newsSlotKey(slot)] = true
+		}
 		p.readyStories.Add(int32(countNewsSegments(segments)))
-		p.ready <- preparedNews{kind: slot.Kind, slot: slot, segments: segments}
+		p.ready <- prepared
+		p.readyMu.Unlock()
 		log.Printf("[news] READY %s %d story/stories in slot %d/%d: %s", slot.Kind, countNewsSegments(segments), len(p.ready), cap(p.ready), items[0].Title)
 		p.publish("ready")
 	}
@@ -288,15 +313,60 @@ func (p *newsPreloader) SetSource(source string) bool {
 func (p *newsPreloader) invalidateReady() {
 	p.generation.Add(1)
 	p.Wake()
+	p.readyMu.Lock()
+	defer p.readyMu.Unlock()
 	for {
 		select {
 		case prepared := <-p.ready:
+			p.forgetScheduled(prepared)
 			p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
 			p.releaseSegments(prepared.segments)
 		default:
 			p.publish("loading")
 			return
 		}
+	}
+}
+
+func newsSlotKey(slot news.ProgramSlot) string {
+	if slot.At.IsZero() {
+		return ""
+	}
+	return string(slot.Kind) + ":" + slot.At.Format(time.RFC3339)
+}
+
+func (p *newsPreloader) canPrepareScheduled(slot news.ProgramSlot) bool {
+	key := newsSlotKey(slot)
+	if p == nil || key == "" {
+		return false
+	}
+	p.readyMu.Lock()
+	defer p.readyMu.Unlock()
+	return !p.scheduled[key]
+}
+
+func (p *newsPreloader) forgetScheduled(prepared preparedNews) {
+	if prepared.scheduled {
+		delete(p.scheduled, newsSlotKey(prepared.slot))
+	}
+}
+
+func (p *newsPreloader) pruneReady(now time.Time) {
+	if p == nil {
+		return
+	}
+	p.readyMu.Lock()
+	defer p.readyMu.Unlock()
+	count := len(p.ready)
+	for i := 0; i < count; i++ {
+		prepared := <-p.ready
+		if !prepared.expiresAt.IsZero() && !now.Before(prepared.expiresAt) {
+			p.forgetScheduled(prepared)
+			p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
+			p.releaseSegments(prepared.segments)
+			continue
+		}
+		p.ready <- prepared
 	}
 }
 
@@ -372,26 +442,61 @@ func (p *newsPreloader) tryTake(slot *news.ProgramSlot) ([]Segment, bool) {
 	if p == nil || !p.enabled {
 		return nil, false
 	}
-	select {
-	case prepared := <-p.ready:
-		p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
-		if slot != nil && (prepared.kind != slot.Kind || !prepared.slot.At.Equal(slot.At)) {
-			// This can only happen after a mode switch or a just-expired slot.
-			// Return it to the candidate pool rather than playing the wrong format.
+	p.readyMu.Lock()
+	now := time.Now()
+	count := len(p.ready)
+	items := make([]preparedNews, 0, count)
+	for i := 0; i < count; i++ {
+		prepared := <-p.ready
+		if !prepared.expiresAt.IsZero() && !now.Before(prepared.expiresAt) {
+			p.forgetScheduled(prepared)
+			p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
 			p.releaseSegments(prepared.segments)
-			p.publish("loading")
-			return nil, false
+			continue
 		}
-		if len(p.ready) > 0 {
-			p.publish("ready")
-		} else {
-			p.publish("loading")
+		items = append(items, prepared)
+	}
+	pick := -1
+	if slot != nil {
+		for i, prepared := range items {
+			if prepared.scheduled && prepared.kind == slot.Kind && prepared.slot.At.Equal(slot.At) {
+				pick = i
+				break
+			}
 		}
-		return prepared.segments, true
-	default:
+	} else {
+		// Preserve the scheduled copy when a continuous copy is available.
+		for i, prepared := range items {
+			if !prepared.scheduled {
+				pick = i
+				break
+			}
+		}
+		if pick < 0 && len(items) > 0 {
+			pick = 0
+		}
+	}
+	var selected preparedNews
+	for i, prepared := range items {
+		if i == pick {
+			selected = prepared
+			p.forgetScheduled(prepared)
+			p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
+			continue
+		}
+		p.ready <- prepared
+	}
+	p.readyMu.Unlock()
+	if pick < 0 {
 		p.publish("loading")
 		return nil, false
 	}
+	if len(p.ready) > 0 {
+		p.publish("ready")
+	} else {
+		p.publish("loading")
+	}
+	return selected.segments, true
 }
 
 func countNewsSegments(segments []Segment) int {

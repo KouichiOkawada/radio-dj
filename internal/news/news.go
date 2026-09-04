@@ -68,6 +68,29 @@ type Item struct {
 	URL         string
 	PublishedAt string
 	ImageURL    string
+	Symbols     []string
+	FetchedAt   time.Time
+}
+
+var explicitSecurityCode = regexp.MustCompile(`(?:【|\[|\(|（|コード[:： ]*)([0-9]{4}|[0-9]{3}[A-Z])(?:】|\]|\)|）|\b)`)
+
+// ExtractSymbols accepts only explicitly delimited TSE security codes. A bare
+// four-digit number may be a year or price and is intentionally ignored.
+func ExtractSymbols(text string) []string {
+	matches := explicitSecurityCode.FindAllStringSubmatch(strings.ToUpper(text), -1)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 || seen[match[1]] {
+			continue
+		}
+		seen[match[1]] = true
+		out = append(out, match[1])
+		if len(out) == 3 {
+			break
+		}
+	}
+	return out
 }
 
 // Queue selects current items across every configured feed and remembers when
@@ -484,7 +507,8 @@ func Fetch(feeds []Feed) []Item {
 			if url == "" {
 				url = clean(e.Link.Href)
 			}
-			out = append(out, Item{Source: feed.Name, Category: feed.Category, Title: title, Description: truncate(desc, 180), URL: url, PublishedAt: published, ImageURL: image})
+			desc = truncate(desc, 180)
+			out = append(out, Item{Source: feed.Name, Category: feed.Category, Title: title, Description: desc, URL: url, PublishedAt: published, ImageURL: image, Symbols: ExtractSymbols(title + " " + desc), FetchedAt: time.Now()})
 			added++
 			// Keep one high-volume feed bounded, but retain enough candidates for
 			// News Continuous to run for hours without exhausting a busy source.

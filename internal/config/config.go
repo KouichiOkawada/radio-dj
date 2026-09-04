@@ -47,6 +47,7 @@ type Config struct {
 	NewsBGMVolume    float64
 	JQuantsAPIKey    string
 	WatchSymbols     []string
+	NewsExcludeTerms []string
 	Audio            AudioSettings
 	PlayMode         string
 	AutoMusicEnabled bool
@@ -155,6 +156,7 @@ type fileConfig struct {
 	NewsBGMVolume    float64       `json:"news_bgm_volume,omitempty"`
 	JQuantsAPIKey    string        `json:"jquants_api_key,omitempty"`
 	WatchSymbols     []string      `json:"watch_symbols,omitempty"`
+	NewsExcludeTerms []string      `json:"news_exclude_terms,omitempty"`
 	Audio            AudioSettings `json:"audio,omitempty"`
 	PlayMode         string        `json:"play_mode,omitempty"`
 	AutoMusicEnabled *bool         `json:"auto_music_enabled,omitempty"`
@@ -213,6 +215,7 @@ func Load() Config {
 		NewsBGMVolume:    pickFloat("RDJ_NEWS_BGM_VOLUME", f.NewsBGMVolume, 0.15),
 		JQuantsAPIKey:    firstNonEmpty(os.Getenv("JQUANTS_API_KEY"), f.JQuantsAPIKey),
 		WatchSymbols:     append([]string(nil), f.WatchSymbols...),
+		NewsExcludeTerms: append([]string(nil), f.NewsExcludeTerms...),
 		Audio:            normalizeAudio(f.Audio, f.NewsBGMVolume),
 		PlayMode:         normalizePlayMode(pick("RDJ_PLAY_MODE", f.PlayMode, "radio")),
 		AutoMusicEnabled: pickOptionalBool("RDJ_AUTO_MUSIC", f.AutoMusicEnabled, true),

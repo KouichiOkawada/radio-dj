@@ -71,6 +71,16 @@ func TestFetchKeepsEnoughCandidatesForContinuousNews(t *testing.T) {
 	}
 }
 
+func TestExtractSymbolsRequiresExplicitSecurityCode(t *testing.T) {
+	got := ExtractSymbols("テスト社【1234】と別会社（593A）、2026年の見通し")
+	if strings.Join(got, ",") != "1234,593A" {
+		t.Fatalf("symbols = %#v", got)
+	}
+	if got := ExtractSymbols("2026年に1234円まで上昇"); len(got) != 0 {
+		t.Fatalf("bare numbers must not be treated as securities: %#v", got)
+	}
+}
+
 func TestReserveBulletinBalancesFullNews(t *testing.T) {
 	now := time.Now()
 	q := NewQueue(t.TempDir())

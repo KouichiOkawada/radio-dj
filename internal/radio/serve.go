@@ -65,6 +65,7 @@ var djLogPath string
 type playbackMode struct {
 	mu         sync.RWMutex
 	mode       string
+	pending    string
 	generation uint64
 }
 
@@ -79,11 +80,31 @@ func (p *playbackMode) Snapshot() (string, uint64) {
 	defer p.mu.RUnlock()
 	return p.mode, p.generation
 }
-func (p *playbackMode) Set(mode string) {
+func (p *playbackMode) Request(mode string) (current, pending string) {
 	p.mu.Lock()
-	p.mode = mode
+	defer p.mu.Unlock()
+	if mode == p.mode {
+		p.pending = ""
+	} else {
+		p.pending = mode
+	}
+	return p.mode, p.pending
+}
+func (p *playbackMode) ApplyPending() (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.pending == "" {
+		return p.mode, false
+	}
+	p.mode = p.pending
+	p.pending = ""
 	p.generation++
-	p.mu.Unlock()
+	return p.mode, true
+}
+func (p *playbackMode) Pending() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.pending
 }
 
 func logDJ(kind, text string) {
@@ -124,7 +145,7 @@ func Serve(cfg config.Config) error {
 	st.SetNewsSources(newsSources)
 	modes := newPlaybackMode(cfg.PlayMode)
 	newsQueue := news.NewQueue(cfg.StateDir)
-	newsStore := news.NewStore()
+	newsStore := news.NewStore(cfg.NewsExcludeTerms...)
 	collectorCtx, stopCollectors := context.WithCancel(context.Background())
 	defer stopCollectors()
 	djLogPath = filepath.Join(cfg.StateDir, "dj-log.txt") // /dj-log tails this for feedback
@@ -156,8 +177,9 @@ func Serve(cfg config.Config) error {
 		musicfeed.Start(collectorCtx, cfg.AutoMusicTempDir, cfg.StateDir)
 		log.Printf("[musicfeed] automatic open-music pool enabled: %s", cfg.AutoMusicTempDir)
 	}
-	programClock := news.NewProgramClock()
+	programClock := news.NewProgramClock(cfg.StateDir)
 	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
+	djPrep := startDJPreloader(djx, vox)
 	st.SetNewsPriorityHandler(newsPrep.SetPriority)
 	st.SetNewsSourceHandler(newsPrep.SetSource)
 
@@ -170,7 +192,7 @@ func Serve(cfg config.Config) error {
 		}
 		srcPw = ic.SourcePassword()
 		st.SetIcecast(fmt.Sprintf("http://%s:%d", cfg.IcecastHost, cfg.IcecastPort), ic.AdminPassword())
-		log.Printf("[radio-dj] icecast supervisado (source pw %s…)", srcPw[:8])
+		log.Printf("[radio-dj] icecast supervised (credentials loaded)")
 	}
 
 	streamer, err := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
@@ -182,13 +204,6 @@ func Serve(cfg config.Config) error {
 	// coalesce into one pending action; the loop drains it after Play returns.
 	controls := make(chan string, 1)
 	var controlMu sync.Mutex
-	var activePlaybackGeneration atomic.Uint64 // encoded as generation+1; zero means between segments
-	playForGeneration := func(path string, generation uint64) error {
-		encoded := generation + 1
-		activePlaybackGeneration.Store(encoded)
-		defer activePlaybackGeneration.CompareAndSwap(encoded, 0)
-		return streamer.Play(path)
-	}
 	takeControl := func() string {
 		controlMu.Lock()
 		defer controlMu.Unlock()
@@ -215,40 +230,11 @@ func Serve(cfg config.Config) error {
 			log.Printf("[mode] save: %v", err)
 			return false
 		}
-		_, oldGeneration := modes.Snapshot()
-		modes.Set(mode)
+		current, pending := modes.Request(mode)
 		if mode == "news" {
 			newsPrep.Wake()
 		}
-		// Cut the current decoder so the consumer drops the old tanda and
-		// begins the newly selected mode without waiting for a whole song.
-		controlMu.Lock()
-		stopped := streamer.SkipCurrent()
-		controlMu.Unlock()
-		if !stopped {
-			// SetCurrent and ffmpeg's decoder registration are not atomic. If the
-			// click lands in that gap, retry only while an old-generation segment
-			// is active; never kill audio that already belongs to the new mode.
-			go func(staleGeneration uint64) {
-				deadline := time.Now().Add(2 * time.Second)
-				encodedStale := staleGeneration + 1
-				for time.Now().Before(deadline) {
-					active := activePlaybackGeneration.Load()
-					if active > encodedStale {
-						return
-					}
-					if active == encodedStale {
-						controlMu.Lock()
-						stopped := streamer.SkipCurrent()
-						controlMu.Unlock()
-						if stopped {
-							return
-						}
-					}
-					time.Sleep(20 * time.Millisecond)
-				}
-			}(oldGeneration)
-		}
+		st.SetPendingMode(current, pending)
 		return true
 	})
 	st.MarkPlaying(true)
@@ -292,7 +278,6 @@ func Serve(cfg config.Config) error {
 
 	// Producer: prefetch tandas so the master never starves.
 	prepared := make(chan preparedTanda, 2)
-	var queuedNewsBatches atomic.Int32
 	var activeNewsFallbacks atomic.Int32
 	go func() {
 		tc := 0
@@ -312,9 +297,6 @@ func Serve(cfg config.Config) error {
 				continue
 			}
 			log.Printf("[radio-dj] tanda lista (%d segmentos%s) — prefetched", len(segs), reqs)
-			if segmentsContainNews(segs) {
-				queuedNewsBatches.Add(1)
-			}
 			if segmentsContainNewsFallback(segs) {
 				activeNewsFallbacks.Add(1)
 			}
@@ -324,13 +306,20 @@ func Serve(cfg config.Config) error {
 
 	// Consumer: play each tanda as it arrives; the next is already being built.
 	var previousTrack *Segment
+	songsSinceTalk := 0
+	talkCadence := cfg.DJEvery
+	if talkCadence < 2 {
+		talkCadence = 2
+	}
+	if talkCadence > 4 {
+		talkCadence = 4
+	}
 	tandaN := 0
 	for batch := range prepared {
-		batchHasNews := segmentsContainNews(batch.segs)
-		batchHasFallback := segmentsContainNewsFallback(batch.segs)
-		if batchHasNews {
-			queuedNewsBatches.Add(-1)
+		if applied, ok := modes.ApplyPending(); ok {
+			st.ApplyMode(applied)
 		}
+		batchHasFallback := segmentsContainNewsFallback(batch.segs)
 		currentMode, currentGeneration := modes.Snapshot()
 		if batch.mode != currentMode || batch.generation != currentGeneration {
 			newsPrep.releaseSegments(batch.segs)
@@ -342,12 +331,12 @@ func Serve(cfg config.Config) error {
 		segs := batch.segs
 		tandaN++
 		log.Printf("[radio-dj] ▶ tanda #%d al aire (%d segmentos)", tandaN, len(segs))
-		pendingVoicePath := ""
-		pendingVoiceText := ""
-		pendingMidrollPath := ""
-		pendingMidrollText := ""
-		pendingLiveTime := false
 		for i := 0; i < len(segs); i++ {
+			if applied, ok := modes.ApplyPending(); ok {
+				st.ApplyMode(applied)
+				newsPrep.releaseSegments(segs[i:])
+				break
+			}
 			seg := segs[i]
 			currentMode, currentGeneration = modes.Snapshot()
 			if batch.mode != currentMode || batch.generation != currentGeneration {
@@ -380,16 +369,18 @@ func Serve(cfg config.Config) error {
 				}
 			}
 			if seg.IsNews {
-				newsPrep.markAired(seg)
-				if seg.Program != nil {
-					programClock.MarkAired(*seg.Program)
-				}
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
-				if err := playForGeneration(seg.Path, batch.generation); err != nil {
+				if err := streamer.Play(seg.Path); err != nil {
 					log.Printf("[news] segment error: %v", err)
+					newsPrep.releaseSegments([]Segment{seg})
+				} else {
+					newsPrep.markAired(seg)
+					if seg.Program != nil {
+						programClock.MarkAired(*seg.Program)
+					}
+					newsPrep.cleanupSegment(seg)
 				}
-				newsPrep.cleanupSegment(seg)
 				continue
 			}
 			if seg.IsDJ {
@@ -401,119 +392,62 @@ func Serve(cfg config.Config) error {
 					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
 				}
 				logDJ(status.LogKindDJ, seg.Text)
-				if err := playForGeneration(seg.Path, batch.generation); err != nil {
+				if err := streamer.Play(seg.Path); err != nil {
 					log.Printf("[dj] segment error: %v", err)
 				}
 				newsPrep.cleanupSegment(seg)
 				continue
 			}
 			if seg.IsVoice {
-				switch {
-				case seg.LiveTime:
-					pendingLiveTime = true // clock skill — voice built at air-time
-				case seg.Midroll:
-					pendingMidrollPath = seg.Path // fire mid-song (~50%)
-					pendingMidrollText = seg.Text
-				default:
-					pendingVoicePath = seg.Path // overlay over the next song (live ducking)
-					pendingVoiceText = seg.Text
+				// Unknown vocal intros are never overlaid on a song. Only already
+				// rendered speech may air here; live LLM work and generic midrolls
+				// are skipped so the next music segment is never delayed.
+				if seg.LiveTime || seg.Midroll || seg.Path == "" {
+					cleanupDJVoice(seg.Path)
+					continue
 				}
+				st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
+				logDJ(status.LogKindDJ, seg.Text)
+				if err := streamer.Play(seg.Path); err != nil {
+					log.Printf("[dj] dry segment error: %v", err)
+				}
+				cleanupDJVoice(seg.Path)
 				continue
 			}
 		playCurrent:
 			st.SetCurrent(toStatus(seg.Meta), toStatus(nextTrack(segs, i)))
 			log.Printf("▶ %s — %s", seg.Meta.Title, seg.Meta.Artist)
+			songsSinceTalk++
+			prepareTalk := currentMode == "radio" && cfg.DJEnabled && songsSinceTalk >= talkCadence
+			if prepareTalk {
+				djPrep.Prepare(seg.Meta)
+			}
 			if seg.Req != "" {
 				logDJ(status.LogKindReq, seg.Req) // air-time: the requested track starts now
 			}
-			if pendingLiveTime {
-				// clock skill: generate the voice NOW so the hour isn't stale.
-				// Song is already playing (ducked via Interject), so GLM+TTS
-				// latency (2-5s) hides under it — no dead air.
-				pendingLiveTime = false
-				go func() {
-					text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
-					logDJ(status.LogKindTime, text)
-					vf, verr := vox.Speak(text)
-					if verr != nil {
-						log.Printf("[dj] time voice: %v", verr)
-						return
-					}
-					if err := streamer.Interject(vf); err != nil {
-						log.Printf("[dj] interject: %v", err)
-					}
-				}()
-			} else if pendingVoicePath != "" {
-				vf := pendingVoicePath
-				vt := pendingVoiceText
-				pendingVoicePath = ""
-				pendingVoiceText = ""
-				go func() {
-					time.Sleep(700 * time.Millisecond) // let the intro land
-					logDJ(status.LogKindDJ, vt)        // air-time: the intro overlays the song now
-					if err := streamer.Interject(vf); err != nil {
-						log.Printf("[dj] interject: %v", err)
-					}
-				}()
-			}
-			// midroll: fire at ~50% of the song duration
-			if pendingMidrollPath != "" {
-				mf := pendingMidrollPath
-				mt := pendingMidrollText
-				src := seg.Meta.Src
-				pendingMidrollPath = ""
-				pendingMidrollText = ""
-				go func() {
-					dur := library.Duration(src).Seconds()
-					if dur < 30 {
-						return // too short for midroll
-					}
-					time.Sleep(time.Duration(dur * 0.5 * float64(time.Second)))
-					logDJ(status.LogKindDJ, mt)
-					if err := streamer.Interject(mf); err != nil {
-						log.Printf("[dj] midroll interject: %v", err)
-					}
-				}()
-			}
-			// If the filler started just before a bulletin became ready, end it at
-			// once instead of making News Continuous wait for the whole track.
-			var newsReadyWatch chan struct{}
-			if seg.NewsFallback {
-				newsReadyWatch = make(chan struct{})
-				go func(done <-chan struct{}) {
-					ticker := time.NewTicker(100 * time.Millisecond)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-done:
-							return
-						case <-ticker.C:
-							mode := modes.Get()
-							newsCanInterrupt := mayInterruptForNews(mode, programClock, time.Now())
-							if newsCanInterrupt && (st.NewsReady() || queuedNewsBatches.Load() > 0) {
-								controlMu.Lock()
-								_ = streamer.SkipCurrent()
-								controlMu.Unlock()
-								return
-							}
-						}
-					}
-				}(newsReadyWatch)
-			}
-			perr := playForGeneration(seg.Path, batch.generation)
-			if newsReadyWatch != nil {
-				close(newsReadyWatch)
-			}
+			perr := streamer.Play(seg.Path)
 			control := takeControl()
 			if perr != nil && control == "" {
 				log.Printf("[radio-dj] segment error: %v", perr)
 			}
 			cleanupTransient(cfg.AutoMusicTempDir, seg.Path)
+			if perr == nil && prepareTalk && modes.Pending() == "" && modes.Get() == "radio" {
+				if talk, ok := djPrep.TryTake(seg.Meta); ok {
+					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: talk.text}, status.Track{})
+					logDJ(status.LogKindDJ, talk.text)
+					if err := streamer.Play(talk.path); err != nil {
+						log.Printf("[dj] preloaded segment error: %v", err)
+					} else {
+						songsSinceTalk = 0
+					}
+					cleanupDJVoice(talk.path)
+				}
+			}
 			if control == "previous" && previousTrack != nil {
 				prev := *previousTrack
 				log.Printf("[radio-dj] ◀ replay %s — %s", prev.Meta.Title, prev.Meta.Artist)
 				st.SetCurrent(toStatus(prev.Meta), toStatus(seg.Meta))
-				_ = playForGeneration(prev.Path, batch.generation)
+				_ = streamer.Play(prev.Path)
 				// a "next" while replaying the previous track returns to the
 				// interrupted current track; discard that consumed command.
 				_ = takeControl()
@@ -545,46 +479,11 @@ func Serve(cfg config.Config) error {
 				}
 			}
 		}
-		// tail voice (e.g. outro with no song after it) — overlay over silence
-		if pendingLiveTime {
-			go func() {
-				text := djx.Say(pool.Prompt("time", map[string]string{"time": time.Now().Format("15:04")}))
-				logDJ(status.LogKindTime, text)
-				if vf, verr := vox.Speak(text); verr == nil {
-					_ = streamer.Interject(vf)
-				}
-			}()
-		} else if pendingVoicePath != "" {
-			logDJ(status.LogKindDJ, pendingVoiceText)
-			if err := streamer.Interject(pendingVoicePath); err != nil {
-				log.Printf("[dj] interject: %v", err)
-			}
-		}
 		if batchHasFallback {
 			activeNewsFallbacks.Add(-1)
 		}
 	}
 	return nil
-}
-
-func mayInterruptForNews(mode string, clock *news.ProgramClock, now time.Time) bool {
-	if mode == "news" {
-		return true
-	}
-	if mode != "radio" || clock == nil {
-		return false
-	}
-	_, due := clock.Due(now)
-	return due
-}
-
-func segmentsContainNews(segs []Segment) bool {
-	for _, seg := range segs {
-		if seg.IsNews {
-			return true
-		}
-	}
-	return false
 }
 
 func segmentsContainNewsFallback(segs []Segment) bool {

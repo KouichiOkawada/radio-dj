@@ -1,6 +1,9 @@
 package news
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -28,15 +31,23 @@ type ProgramSlot struct {
 type ProgramClock struct {
 	loc      *time.Location
 	consumed map[string]bool
+	path     string
 	mu       sync.Mutex
 }
 
-func NewProgramClock() *ProgramClock {
+func NewProgramClock(stateDir ...string) *ProgramClock {
 	loc, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		loc = time.FixedZone("JST", 9*60*60)
 	}
-	return &ProgramClock{loc: loc, consumed: map[string]bool{}}
+	c := &ProgramClock{loc: loc, consumed: map[string]bool{}}
+	if len(stateDir) > 0 && stateDir[0] != "" {
+		c.path = filepath.Join(stateDir[0], "program-slots.json")
+		if data, err := os.ReadFile(c.path); err == nil {
+			_ = json.Unmarshal(data, &c.consumed)
+		}
+	}
+	return c
 }
 
 func (c *ProgramClock) slotKey(slot ProgramSlot) string {
@@ -97,6 +108,10 @@ func (c *ProgramClock) MarkAired(slot ProgramSlot) {
 	}
 	c.mu.Lock()
 	c.consumed[c.slotKey(slot)] = true
+	if c.path != "" {
+		data, _ := json.MarshalIndent(c.consumed, "", "  ")
+		_ = os.WriteFile(c.path, data, 0o644)
+	}
 	c.mu.Unlock()
 }
 
@@ -105,6 +120,8 @@ func (c *ProgramClock) Next(now time.Time) ProgramSlot {
 	if c == nil {
 		return ProgramSlot{}
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	now = now.In(c.loc)
 	for i := 0; i <= 24*60; i++ {
 		candidate := now.Add(time.Duration(i) * time.Minute).Truncate(time.Minute)
@@ -112,13 +129,22 @@ func (c *ProgramClock) Next(now time.Time) ProgramSlot {
 			continue
 		}
 		if candidate.Hour() == 8 && candidate.Minute() == 45 {
-			return ProgramSlot{Kind: ProgramMorningMarket, At: candidate}
+			slot := ProgramSlot{Kind: ProgramMorningMarket, At: candidate}
+			if !c.consumed[c.slotKey(slot)] {
+				return slot
+			}
 		}
 		if candidate.Hour() == 15 && candidate.Minute() == 40 {
-			return ProgramSlot{Kind: ProgramTokyoClose, At: candidate}
+			slot := ProgramSlot{Kind: ProgramTokyoClose, At: candidate}
+			if !c.consumed[c.slotKey(slot)] {
+				return slot
+			}
 		}
 		if candidate.Minute() == 0 || (candidate.Minute() == 30 && candidate.Hour() >= 6) {
-			return ProgramSlot{Kind: map[bool]ProgramKind{true: ProgramFull, false: ProgramFlash}[candidate.Minute() == 0], At: candidate}
+			slot := ProgramSlot{Kind: map[bool]ProgramKind{true: ProgramFull, false: ProgramFlash}[candidate.Minute() == 0], At: candidate}
+			if !c.consumed[c.slotKey(slot)] {
+				return slot
+			}
 		}
 	}
 	return ProgramSlot{}

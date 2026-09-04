@@ -22,14 +22,30 @@ func TestServeIndexRendersSkipControls(t *testing.T) {
 		t.Fatalf("unrendered template action left in page: %q", body[i:i+12])
 	}
 	for _, want := range []string{
-		"PREV ◀",              // ui_previous rendered on the ◀◀ button
-		"SKIP ▶",              // ui_skip rendered on the ▶▶ button
-		"control('previous'",  // ◀◀ button → previous action
-		"control('next'",      // ▶▶ button → next action
-		"/control",            // the fetch target
+		"PREV ◀",             // ui_previous rendered on the ◀◀ button
+		"SKIP ▶",             // ui_skip rendered on the ▶▶ button
+		"control('previous'", // ◀◀ button → previous action
+		"control('next'",     // ▶▶ button → next action
+		"/control",           // the fetch target
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("index render missing %q", want)
 		}
+	}
+}
+
+func TestPlayerShellUsesLocalAvatarAndFreshHTML(t *testing.T) {
+	s := &Server{lang: "ja", mount: "/stream.mp3"}
+	rec := httptest.NewRecorder()
+	s.serveIndex(rec)
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control=%q, want no-cache", got)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `src="/dj-avatar.svg"`) {
+		t.Error("local DJ avatar is missing")
+	}
+	if strings.Contains(body, "api.dicebear.com") || strings.Contains(body, "news-readiness.js") {
+		t.Error("player still depends on a removed runtime UI asset")
 	}
 }

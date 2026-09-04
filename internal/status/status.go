@@ -40,6 +40,7 @@ type Track struct {
 	PublishedAt    string  `json:"published_at,omitempty"`
 	ImageURL       string  `json:"image_url,omitempty"`
 	SpeechText     string  `json:"speech_text,omitempty"`
+	CoverVersion   uint64  `json:"cover_version,omitempty"`
 }
 
 type Request struct {
@@ -52,6 +53,7 @@ type Request struct {
 
 type NowPlaying struct {
 	Mode           string    `json:"mode,omitempty"`
+	PendingMode    string    `json:"pending_mode,omitempty"`
 	Current        Track     `json:"current"`
 	Next           *Track    `json:"next,omitempty"`
 	History        []Track   `json:"history,omitempty"`
@@ -90,6 +92,7 @@ type Server struct {
 	icListeners int
 	icCacheT    time.Time
 	subs        map[chan NowPlaying]struct{} // SSE subscribers for /events
+	coverToken  uint64
 }
 
 func New(stateDir string, needsSetup bool, mount string) *Server {
@@ -196,11 +199,35 @@ func (s *Server) setMode(mode string) bool {
 		return false
 	}
 	s.mu.Lock()
-	s.mode = mode
-	s.cur.Mode = mode
+	if mode == s.mode {
+		s.cur.PendingMode = ""
+	} else {
+		s.cur.PendingMode = mode
+	}
 	s.mu.Unlock()
 	go s.broadcast()
 	return true
+}
+
+// SetPendingMode publishes the radio engine's accepted intent without
+// pretending the on-air mode changed before the current segment ends.
+func (s *Server) SetPendingMode(current, pending string) {
+	s.mu.Lock()
+	s.mode = current
+	s.cur.Mode = current
+	s.cur.PendingMode = pending
+	s.mu.Unlock()
+	go s.broadcast()
+}
+
+// ApplyMode is called only at a safe segment boundary.
+func (s *Server) ApplyMode(mode string) {
+	s.mu.Lock()
+	s.mode = mode
+	s.cur.Mode = mode
+	s.cur.PendingMode = ""
+	s.mu.Unlock()
+	go s.broadcast()
 }
 
 // requestControl forwards a control action to the radio loop. Returns whether
@@ -238,16 +265,17 @@ func (s *Server) SetCurrent(cur, next Track) {
 	}
 	s.cur.StartedAt = time.Now()
 	src := cur.Src
+	s.coverToken++
+	coverToken := s.coverToken
 	s.mu.Unlock()
 	s.persist()
-	// extract cover SYNCHRONOUSLY before broadcasting: otherwise the SSE
-	// reaches the browser before ffmpeg rewrites cover.jpg, so /cover serves the
-	// previous track's art (always one track behind). ~50-200ms once per track
-	// — invisible, and streamer.Play hasn't started yet anyway.
-	if src != "" {
-		s.extractCover(src)
-	}
+	_ = os.Remove(filepath.Join(s.dir, "cover.jpg"))
 	go s.broadcast()
+	// Cover extraction is deliberately off the playback path. The token prevents
+	// a slow previous ffmpeg process from overwriting the current track's art.
+	if src != "" {
+		go s.extractCover(src, coverToken)
+	}
 }
 
 // MarkPlaying flips the on-air flag (decorative — the UI reads it to spin reels).
@@ -401,11 +429,25 @@ func parseListeners(xml string) int {
 // extractCover pulls the embedded artwork (if any) of src into cover.jpg so /cover
 // can serve it. Best-effort: no art or ffmpeg absent → /cover 404s, the UI keeps
 // its radio glyph. Transcoded to JPEG for a uniform, predictable content type.
-func (s *Server) extractCover(src string) {
+func (s *Server) extractCover(src string, token uint64) {
 	dst := filepath.Join(s.dir, "cover.jpg")
-	if err := exec.Command("ffmpeg", "-y", "-loglevel", "error", "-i", src, "-map", "0:v:0", "-vframes", "1", "-q:v", "3", dst).Run(); err != nil {
-		_ = os.Remove(dst) // partial/empty → don't serve stale art
+	tmp := filepath.Join(s.dir, fmt.Sprintf("cover-%d.tmp.jpg", token))
+	if err := exec.Command("ffmpeg", "-y", "-loglevel", "error", "-i", src, "-map", "0:v:0", "-vframes", "1", "-q:v", "3", tmp).Run(); err != nil {
+		_ = os.Remove(tmp)
+		return
 	}
+	s.mu.Lock()
+	if token != s.coverToken {
+		s.mu.Unlock()
+		_ = os.Remove(tmp)
+		return
+	}
+	_ = os.Remove(dst)
+	if err := os.Rename(tmp, dst); err == nil {
+		s.cur.Current.CoverVersion = token
+	}
+	s.mu.Unlock()
+	go s.broadcast()
 }
 
 // handleCover serves the current track's artwork with an ETag keyed to the
@@ -510,8 +552,9 @@ func (s *Server) ListenAndServeHTTP(port int) {
 		if r.Method == http.MethodGet {
 			s.mu.RLock()
 			mode := s.mode
+			pending := s.cur.PendingMode
 			s.mu.RUnlock()
-			_ = json.NewEncoder(w).Encode(map[string]string{"mode": mode})
+			_ = json.NewEncoder(w).Encode(map[string]string{"mode": mode, "pending_mode": pending})
 			return
 		}
 		if r.Method != http.MethodPut {
@@ -529,7 +572,8 @@ func (s *Server) ListenAndServeHTTP(port int) {
 			http.Error(w, `{"error":"mode switch unavailable"}`, http.StatusConflict)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"mode": body.Mode})
+		np := s.Current()
+		_ = json.NewEncoder(w).Encode(map[string]string{"mode": np.Mode, "pending_mode": np.PendingMode})
 	})
 	mux.HandleFunc("/news-priority", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

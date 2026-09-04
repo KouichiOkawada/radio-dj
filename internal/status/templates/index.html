@@ -67,6 +67,17 @@
   .mode-card strong{ font-family:var(--font-mono); font-size:11px; margin-right:auto; }
   .mode-button{ border:2px solid var(--line); background:#f7efdc; padding:7px 9px; font:800 10px var(--font-ui); cursor:pointer; }
   .mode-button.active{ background:var(--sage); box-shadow:2px 2px 0 var(--line); }
+  .mode-button.pending{border-color:#d08a24;background:#fff2cf}
+  .news-settings{margin-top:12px;border-top:1px solid rgba(34,28,22,.16);padding-top:9px}
+  .news-settings summary{cursor:pointer;font:800 11px var(--font-ui);color:var(--soft)}
+  .news-setting-summary{display:inline;margin-left:8px;font-weight:700}
+  .toast{position:fixed;z-index:20;right:22px;bottom:22px;max-width:min(420px,calc(100vw - 32px));padding:12px 15px;border-radius:10px;background:#17324a;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font-weight:800;font-size:12px}
+  .toast.error{background:#9b2f29}.toast[hidden]{display:none}
+  button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid #1976d2;outline-offset:2px}
+  .now-main{padding:15px 17px;background:#fff}
+  .now-kicker{font:900 10px var(--font-mono);letter-spacing:1.5px;color:var(--soft)}
+  .now-title{font-size:20px;font-weight:900;line-height:1.3;margin-top:4px;overflow-wrap:anywhere}
+  .now-artist,.now-next{font-size:12px;color:var(--soft);margin-top:4px;line-height:1.45}
 
   /* ── Barra superior ── */
   .bar{ display:flex; align-items:stretch; }
@@ -138,15 +149,14 @@
   /* tira de color inferior */
   .key .strip{ position:absolute; left:0; right:0; bottom:0; height:13px; border-top:2px solid var(--line); z-index:1; }
   .k-stop  .strip{ background:#5b8aa6; }
-  .k-ffwd  .strip,.k-rew .strip{ background:#efe8d6; }
+  .k-prev .strip,.k-next .strip{ background:#efe8d6; }
   .k-play  .strip{ background:var(--sage); }
-  .k-rec   .strip{ background:var(--onair); }
+  .k-request .strip{ background:var(--rose); }
   /* pulsado / enclavado: se hunde */
   .key:active .cap,.key.down .cap{ transform:translateY(6px); box-shadow:0 1px 0 #8f8672, 0 2px 0 var(--line); }
   .key.down .cap{ background:#ded7c6; }
   .key.k-play.down .ico,.key.k-play.down .txt{ color:#1f3a1c; }
-  .key.k-rec.down  .cap{ background:#f2c9bf; }
-  .key.k-rec.down .strip{ animation:recblink 1.4s ease-in-out infinite; }
+  .key.k-request.down  .cap{ background:#f2c9bf; }
   @keyframes recblink{ 50%{ background:#7a1f16; } }
   .key.connecting .cap{ animation:keypulse 1s steps(2) infinite; }
   @keyframes keypulse{ 50%{ background:#c9bda8; } }
@@ -250,8 +260,8 @@
     .brand{ background:#192a3a; color:#fff; font-size:17px; }
     .freq{ background:#edf3f7; color:#465867; }
     .playing .onair{ background:#d8463a; }
-    .card{ display:none; }
-    .cass-wrap{ grid-area:cassette; padding:30px 34px 8px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,#fff,#f3f7fa); box-shadow:0 10px 26px rgba(23,40,58,.09); }
+    .card{ display:block; grid-area:cassette; align-self:start; z-index:2; }
+    .cass-wrap{ grid-area:cassette; padding:150px 34px 8px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,#fff,#f3f7fa); box-shadow:0 10px 26px rgba(23,40,58,.09); }
     .cass{ filter:drop-shadow(9px 14px 9px rgba(21,32,43,.25)); }
     .news-card{ grid-area:news; padding:20px; background:#eef7f1; min-height:190px; }
     .news-grid{ grid-template-columns:120px minmax(0,1fr); gap:15px; }
@@ -290,6 +300,12 @@
     </div>
 
     <div class="blk card">
+      <div class="now-main">
+        <div class="now-kicker" id="now-kind">NOW PLAYING</div>
+        <div class="now-title" id="now-title">選曲中</div>
+        <div class="now-artist" id="now-artist"></div>
+        <div class="now-next" id="now-next">NEXT · 選曲中</div>
+      </div>
       <div class="card-bot">
         <span class="card-time"><span id="elapsed">0:00</span> / <span id="dur-total">0:00</span></span>
         <div class="songbar" id="prog" style="display:none"><i></i></div>
@@ -307,24 +323,28 @@
           <a class="news-link" id="news-link" target="_blank" rel="noopener noreferrer" hidden>記事を開く</a>
         </div>
       </div>
-      <div class="news-priority" id="news-priority" aria-label="聞きたいニュースを優先">
-        <button data-news-priority="">おすすめ</button><button data-news-priority="stock">株式</button><button data-news-priority="finance">経済</button><button data-news-priority="general">一般</button><button data-news-priority="hokkaido">北海道</button><button data-news-priority="tech">テック</button>
-      </div>
-      <div class="news-source-filter">
-        <div class="news-source-label">取得元を1つに絞る（ニュース種類と組み合わせ）</div>
-        <div class="news-source-options" id="news-source-options" aria-label="ニュース取得元">
-          <button data-news-source="" class="active">すべての取得元</button>
+      <details class="news-settings" id="news-settings">
+        <summary>ニュース設定 <span class="news-setting-summary" id="news-setting-summary">優先: おすすめ · 取得元: すべて</span></summary>
+        <div class="news-source-label">ニュース優先テーマ</div>
+        <div class="news-priority" id="news-priority" aria-label="ニュース優先テーマ">
+          <button data-news-priority="">おすすめ</button><button data-news-priority="stock">株式</button><button data-news-priority="finance">経済</button><button data-news-priority="general">一般</button><button data-news-priority="hokkaido">北海道</button><button data-news-priority="tech">テック</button>
         </div>
-      </div>
+        <div class="news-source-filter">
+          <div class="news-source-label">取得元を限定</div>
+          <div class="news-source-options" id="news-source-options" aria-label="ニュース取得元">
+            <button data-news-source="" class="active">すべての取得元</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="blk dj-card" id="dj-card" aria-live="polite">
       <div class="dj-kicker">AI DJ · アイコ</div>
       <div class="dj-host">
-        <div class="dj-avatar-wrap"><img class="dj-avatar" id="dj-avatar" src="https://api.dicebear.com/10.x/lorelei/svg?seed=Aiko&amp;backgroundColor=ffd5dc&amp;radius=18" alt="AI DJ アイコ"></div>
+        <div class="dj-avatar-wrap"><img class="dj-avatar" id="dj-avatar" src="/dj-avatar.svg" alt="AI DJ アイコ"></div>
         <div>
           <div class="dj-caption" id="dj-text">音楽とニュースを準備しています。</div>
-          <a class="dj-credit" href="https://www.dicebear.com/styles/lorelei/" target="_blank" rel="noopener noreferrer">Lorelei by Lisa Wischofsky / CC0 · DiceBear</a>
+          <span class="dj-credit">AI DJ アイコ</span>
           <a class="music-credit" id="music-credit" target="_blank" rel="noopener noreferrer" hidden>この曲の配布元・ライセンス</a>
         </div>
       </div>
@@ -341,6 +361,7 @@
       <button class="mode-button" data-mode="radio">ラジオ</button>
       <button class="mode-button" data-mode="news">ニュース連続</button>
       <button class="mode-button" data-mode="music">音楽のみ</button>
+      <div id="news-engine-state" aria-live="polite"></div>
     </div>
 
     <div class="cass-wrap">
@@ -510,17 +531,17 @@
           <button class="key k-stop" id="k-stop" aria-label="Stop">
             <span class="cap"><span class="ico">■</span><span class="txt">Stop</span><span class="strip"></span></span>
           </button>
-          <button class="key k-ffwd" id="k-ffwd" aria-label="{{.AriaFfwd}}">
+          <button class="key k-prev" id="k-prev" aria-label="{{.AriaFfwd}}">
             <span class="cap"><span class="ico">◀◀</span><span class="txt">{{.Previous}}</span><span class="strip"></span></span>
           </button>
           <button class="key k-play" id="k-play" aria-label="Play">
             <span class="cap"><span class="ico" id="play-ico">▶</span><span class="txt" id="play-txt">Play</span><span class="strip"></span></span>
           </button>
-          <button class="key k-rew" id="k-rew" aria-label="{{.AriaRew}}">
+          <button class="key k-next" id="k-next" aria-label="{{.AriaRew}}">
             <span class="cap"><span class="ico">▶▶</span><span class="txt">{{.Skip}}</span><span class="strip"></span></span>
           </button>
-          <button class="key k-rec" id="k-rec" aria-label="{{.AriaRec}}" aria-pressed="false">
-            <span class="cap"><span class="ico">●</span><span class="txt">Rec</span><span class="strip"></span></span>
+          <button class="key k-request" id="k-request" aria-label="リクエスト" aria-pressed="false">
+            <span class="cap"><span class="ico">＋</span><span class="txt">Request</span><span class="strip"></span></span>
           </button>
         </div>
       </div>
@@ -555,6 +576,7 @@
   </div>
 
 <audio id="audio" preload="none"></audio>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script type="application/json" id="i18n">{{.I18n}}</script>
 <script>
   // PWA: register service worker for installability + offline app shell.
@@ -565,6 +587,15 @@
   const audio = document.getElementById('audio');
   const $ = id => document.getElementById(id);
   const listenVolume = $('listen-volume');
+  let toastTimer = null;
+  function notify(message, error=false, sticky=false){
+    const box = $('toast');
+    clearTimeout(toastTimer);
+    box.textContent = message;
+    box.classList.toggle('error', error);
+    box.hidden = false;
+    if(!sticky) toastTimer = setTimeout(()=>{ box.hidden=true; }, 3500);
+  }
   const savedListenVolume = Number(localStorage.getItem('rdj_listen_volume'));
   const setListenVolume = value => {
     const v = Math.max(0, Math.min(100, Number(value)||0));
@@ -575,18 +606,30 @@
   };
   setListenVolume(Number.isFinite(savedListenVolume) ? savedListenVolume : 80);
   listenVolume.addEventListener('input', e => setListenVolume(e.target.value));
-  function setModeUI(mode){ document.querySelectorAll('.mode-button').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode)); }
+  function setModeUI(mode, pending=''){
+    document.querySelectorAll('.mode-button').forEach(b=>{
+      const active = b.dataset.mode===mode, queued = b.dataset.mode===pending;
+      b.classList.toggle('active', active); b.classList.toggle('pending', queued);
+      b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      b.title = queued ? '現在の内容が終わり次第、このモードへ切り替えます' : '';
+    });
+  }
   document.querySelectorAll('.mode-button').forEach(button=>button.addEventListener('click', async ()=>{
     try{
       const r = await fetch('/playback-mode',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:button.dataset.mode})});
-      if(r.ok) setModeUI((await r.json()).mode);
-    }catch(_){}
+      if(!r.ok) throw new Error(await r.text());
+      const result = await r.json();
+      setModeUI(result.mode, result.pending_mode);
+      notify(result.pending_mode ? '現在の内容が終わり次第、モードを切り替えます' : 'モード切替予約を解除しました');
+    }catch(_){ notify('モードを変更できませんでした', true); }
   }));
   document.querySelectorAll('[data-news-priority]').forEach(button=>button.addEventListener('click', async ()=>{
     try{
       const r = await fetch('/news-priority',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:button.dataset.newsPriority})});
-      if(r.ok) document.querySelectorAll('[data-news-priority]').forEach(b=>b.classList.toggle('active', b===button));
-    }catch(_){}
+      if(!r.ok) throw new Error(await r.text());
+      document.querySelectorAll('[data-news-priority]').forEach(b=>b.classList.toggle('active', b===button));
+      notify('ニュース優先テーマを変更しました');
+    }catch(_){ notify('ニュース優先テーマを変更できませんでした', true); }
   }));
   let renderedNewsSources = '';
   function renderNewsSources(snapshot){
@@ -603,8 +646,10 @@
         button.addEventListener('click', async ()=>{
           try{
             const response = await fetch('/news-source',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({source})});
-            if(response.ok) document.querySelectorAll('[data-news-source]').forEach(b=>b.classList.toggle('active', b.dataset.newsSource === source));
-          }catch(_){}
+            if(!response.ok) throw new Error(await response.text());
+            document.querySelectorAll('[data-news-source]').forEach(b=>b.classList.toggle('active', b.dataset.newsSource === source));
+            notify(source ? 'ニュース取得元を限定しました' : 'すべてのニュース取得元を使用します');
+          }catch(_){ notify('ニュース取得元を変更できませんでした', true); }
         });
         box.appendChild(button);
       }
@@ -616,7 +661,7 @@
   function playStream(){ audio.src = '{{.StreamPath}}'; return audio.play(); }
   const deck = $('deck');
 
-  const kPlay = $('k-play'), kStop = $('k-stop'), kRec = $('k-rec'), kFfwd = $('k-ffwd'), kRew = $('k-rew');
+  const kPlay = $('k-play'), kStop = $('k-stop'), kRequest = $('k-request'), kPrev = $('k-prev'), kNext = $('k-next');
 
   let audioState = 'idle';
   function setAudioState(s){
@@ -639,14 +684,16 @@
 
   // REC = armar pedido (dedicatoria al locutor)
   function setRec(on){
-    kRec.classList.toggle('down', on);
-    kRec.setAttribute('aria-pressed', on ? 'true' : 'false');
+    kRequest.classList.toggle('down', on);
+    kRequest.setAttribute('aria-pressed', on ? 'true' : 'false');
     $('ask').hidden = !on;
     if(on) setTimeout(()=> $('q').focus(), 60);
   }
 
+  let wantsPlayback = false, reconnectTimer = null, reconnectAttempt = 0;
   kPlay.onclick = ()=>{
     if(audioState === 'idle'){
+      wantsPlayback = true;
       setRec(false);
       setAudioState('connecting');
       playStream().catch(()=> setAudioState('idle'));
@@ -656,10 +703,12 @@
     // Release the accumulated progressive-download buffer (currentTime is a no-op
     // on a live stream). Next play reassigns src via playStream().
     releaseSkipKey(); // Stop pops every transport key — the cassette "chunk"
+    wantsPlayback = false;
+    clearTimeout(reconnectTimer); reconnectTimer = null; reconnectAttempt = 0;
     audio.pause(); audio.removeAttribute('src'); audio.load();
     setAudioState('idle'); setRec(false);
   };
-  kRec.onclick = ()=> setRec(!kRec.classList.contains('down'));
+  kRequest.onclick = ()=> setRec(!kRequest.classList.contains('down'));
   // Cassette transport keys: ◀◀ = previous, ▶▶ = next. Server-side they kill
   // the in-flight decoder (listeners stay connected). The key LATCHES down until
   // the skip actually lands (track change via SSE) — like a real deck key staying
@@ -686,13 +735,14 @@
       if(!res.ok) return res.text().then(t=>{ throw new Error(t); });
     }).catch(err=>{
       console.error('radio control failed', err);
+      notify('再生操作を実行できませんでした', true);
       releaseSkipKey(); // 409 / network error → spring back at once
     });
   }
-  kFfwd.onclick = ()=> control('previous', kFfwd);
-  kRew.onclick = ()=> control('next', kRew);
+  kPrev.onclick = ()=> control('previous', kPrev);
+  kNext.onclick = ()=> control('next', kNext);
 
-  audio.addEventListener('playing', ()=> setAudioState('playing'));
+  audio.addEventListener('playing', ()=>{ reconnectAttempt=0; $('toast').hidden=true; setAudioState('playing'); });
   audio.addEventListener('pause',   ()=>{ if(audioState!=='idle') setAudioState('idle'); });
 
   let metaTitle='', metaArtist='';
@@ -704,20 +754,22 @@
     });
   }
   if('mediaSession' in navigator){
-    navigator.mediaSession.setActionHandler('play',  ()=> playStream());
-    navigator.mediaSession.setActionHandler('pause', ()=> audio.pause());
+    navigator.mediaSession.setActionHandler('play',  ()=>{ wantsPlayback=true; return playStream(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ wantsPlayback=false; audio.pause(); });
   }
 
-  let reconnectTimer = null;
   function reconnectStream(){
-    if(reconnectTimer) return;
-    setAudioState('idle');
+    if(!wantsPlayback || reconnectTimer) return;
+    setAudioState('connecting');
+    const delay = Math.min(30000, 2500 * Math.pow(2, reconnectAttempt++));
+    notify('サーバーとの接続が切れました。再接続しています', true, true);
     reconnectTimer = setTimeout(()=>{
       reconnectTimer = null;
+      if(!wantsPlayback) return;
       audio.src = '{{.StreamPath}}?t=' + Date.now();
       setAudioState('connecting');
-      audio.play().catch(()=>{});
-    }, 2500);
+      audio.play().catch(reconnectStream);
+    }, delay);
   }
   audio.addEventListener('error', reconnectStream);
   audio.addEventListener('ended', reconnectStream);
@@ -735,11 +787,19 @@
     e.preventDefault();
     const q = $('q').value.trim(); if(!q) return;
     const from = $('q-from').value.trim();
-    $('q').value=''; $('q-from').value='';
-    try{ await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from, text:q})}); refresh(); refreshDJLog(); }catch(_){}
+    const submit = e.currentTarget.querySelector('button[type="submit"]');
     const h = $('ask').querySelector('.h'); const prev = h.textContent;
-    h.textContent = T.ui_recorded_sent;
-    setTimeout(()=>{ h.textContent = prev; setRec(false); }, 1400);
+    submit.disabled = true; h.textContent = '送信中…';
+    try{
+      const response = await fetch('/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from, text:q})});
+      if(!response.ok) throw new Error(await response.text());
+      $('q').value=''; $('q-from').value='';
+      h.textContent = 'リクエストを受け付けました';
+      notify('リクエストを受け付けました');
+      refresh(); refreshDJLog();
+      setTimeout(()=>{ h.textContent = prev; setRec(false); }, 1400);
+    }catch(_){ h.textContent = '送信できませんでした。入力内容を残しています。'; notify('リクエストを送信できませんでした', true); }
+    finally{ submit.disabled = false; }
   });
 
   let startedAt = null, duration = null, coverTitle = null, coverURL = null;
@@ -793,13 +853,34 @@
   }
   setInterval(paintDJCaption, 1000);
 
+  function renderNewsEngine(snapshot){
+    const button = document.querySelector('.mode-button[data-mode="news"]');
+    const state = snapshot.news_state || 'loading';
+    const count = Number(snapshot.news_ready_count || 0);
+    const kindNames = {full:'定時ニュース',flash:'速報',morning_market:'朝のマーケット',tokyo_close:'東京市場まとめ'};
+    const nextAt = snapshot.next_news_at ? new Date(snapshot.next_news_at) : null;
+    const nextLabel = nextAt && Number.isFinite(nextAt.getTime()) ? ` · NEXT ${nextAt.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})} ${kindNames[snapshot.next_news_kind] || ''}` : '';
+    button.disabled = state === 'unavailable';
+    button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
+    const engine = $('news-engine-state');
+    if(state === 'unavailable') engine.textContent = 'NEWS ENGINE · 利用不可';
+    else if(snapshot.news_ready) engine.textContent = `NEWS ENGINE · READY · ${count}件先読み済み${nextLabel}`;
+    else if(snapshot.pending_mode === 'news') engine.textContent = `NEWS ENGINE · ニュース連続へ切替予約済み · 現在の内容終了後${nextLabel}`;
+    else if(state === 'waiting') engine.textContent = `NEWS ENGINE · 新着確認中${nextLabel}`;
+    else engine.textContent = `NEWS ENGINE · RSS / TTS / BGM を準備中${nextLabel}`;
+  }
+
   function applyNowPlaying(j){
     const c = j.current||{};
     const deck = $('deck');
     deck.classList.toggle('state-news', c.type === 'news');
     deck.classList.toggle('state-dj', c.type === 'dj');
-    setModeUI(j.mode || 'radio');
-    document.querySelectorAll('[data-news-priority]').forEach(button=>button.classList.toggle('active', button.dataset.newsPriority === (j.news_priority || '')));
+    setModeUI(j.mode || 'radio', j.pending_mode || '');
+    renderNewsEngine(j);
+    document.querySelectorAll('[data-news-priority]').forEach(button=>{
+      const active = button.dataset.newsPriority === (j.news_priority || '');
+      button.classList.toggle('active', active); button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
     renderNewsSources(j);
     const newsCard = $('news-card');
     const djCard = $('dj-card');
@@ -828,6 +909,13 @@
       $('news-image').closest('.news-grid').classList.add('no-image');
     }
     setDJCaption(c, j.startedAt);
+    const categoryNames = {stock:'株式',finance:'経済',general:'一般',hokkaido:'北海道',tech:'テック'};
+    $('news-setting-summary').textContent = `優先: ${categoryNames[j.news_priority] || 'おすすめ'} · 取得元: ${j.news_source || 'すべて'}`;
+    $('now-kind').textContent = c.type === 'news' ? 'NOW · NEWS' : (c.type === 'dj' ? 'NOW · AI DJ' : 'NOW PLAYING');
+    $('now-title').textContent = c.title || '選曲中';
+    $('now-artist').textContent = [c.artist,c.album].filter(Boolean).join(' · ');
+    const nextText = j.next ? [j.next.type ? j.next.type.toUpperCase() : 'MUSIC',j.next.title,j.next.artist].filter(Boolean).join(' · ') : '選曲中';
+    $('now-next').textContent = 'NEXT · ' + nextText;
     const musicCredit = $('music-credit');
     musicCredit.hidden = !(c.type === 'music' && c.attribution_url);
     musicCredit.href = c.attribution_url || '#';
@@ -887,7 +975,8 @@
       ? h.slice(0,8).map(t=>'<li>'+esc(t.title)+(t.artist?(' — '+esc(t.artist)):'')+'</li>').join('')
       : '<li class="empty">'+T.ui_nothing_played+'</li>';
 
-    if(c.type !== 'news' && c.title && c.title !== coverTitle){ coverTitle = c.title; loadCover(); }
+    const nextCoverKey = c.type !== 'news' && c.title ? c.title + '|' + (c.cover_version || 0) : '';
+    if(nextCoverKey && nextCoverKey !== coverTitle){ coverTitle = nextCoverKey; loadCover(); }
     updateMediaMeta();
     tickProgress();
   }
@@ -1057,6 +1146,7 @@
   refreshDJLog();
   const es = new EventSource('events');
   es.onmessage = e => { try{ applyNowPlaying(JSON.parse(e.data)); }catch(_){} };
+  es.onerror = ()=> notify('サーバーとの状態接続が切れました。再接続しています', true, true);
   setInterval(tickProgress, 1000);
   setInterval(refreshDJLog, 12000);
 </script>

@@ -51,3 +51,14 @@ func TestProgramClockNextIncludesMarketSpecials(t *testing.T) {
 		}
 	}
 }
+
+func TestProgramClockPersistsConsumedSlot(t *testing.T) {
+	dir := t.TempDir()
+	slot := ProgramSlot{Kind: ProgramFull, At: jst(2026, time.September, 3, 8, 0)}
+	first := NewProgramClock(dir)
+	first.MarkAired(slot)
+	restarted := NewProgramClock(dir)
+	if _, due := restarted.Due(jst(2026, time.September, 3, 8, 5)); due {
+		t.Fatal("consumed slot became due again after restart")
+	}
+}

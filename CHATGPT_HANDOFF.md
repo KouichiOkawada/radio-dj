@@ -1,5 +1,49 @@
 # radio-dj Windows 化：ChatGPT 引き継ぎ資料
 
+## Latest handoff — 2026-09-04 09:00 JST（最優先で読む）
+
+- Repository: `C:\AI_TOOL\radio-dj`
+- Branch: `feature/news-radio`
+- Runtime: Windows native only（Docker / WSL は使わない）
+- UI: `http://127.0.0.1:7710/`
+- Icecast stream: `http://127.0.0.1:7702/stream.mp3`
+- Active executable: `C:\AI_TOOL\radio-dj\radio-dj-new.exe serve`
+- Config: `C:\Users\pesu1\.radio-dj\config.json`（APIキーをログや回答へ出さないこと）
+- Music: `C:\Radio\music`; provider is OpenAI `gpt-4.1-mini`; Japanese Edge TTS.
+
+### この引き継ぎで完了した安定化
+
+1. モード変更は即時に曲を切らず、現在の音声セグメント終了時に適用する。
+   `/now-playing` は `mode` と `pending_mode` を分け、UIも「切替予約」を表示する。
+2. NEWS の準備完了を検知して再生中の曲を100msで切る処理を撤去した。
+   実機で News Continuous のフォールバック曲が最後まで流れ、その直後にニュースへ移ることを確認済み。
+3. RSS予約は「生成時」ではなく、ニュース音声の再生成功後だけ `news-seen.json` に記録する。
+   失敗・破棄・モード変更時は予約を候補へ戻す。
+4. ニュースREADYキューに番組枠、生成時刻、失効時刻を持たせた。別時間枠が先頭にあっても一致枠を探索し、期限切れを廃棄する。番組枠消化は `program-slots.json` に永続化。
+5. ラジオのAI DJは曲の再生中に非同期で原稿/TTSを準備し、2〜4曲ごとの安全な曲間にだけ入れる。間に合わなければ無音にせず次の音楽へ進む。固定700msの曲中オーバーレイと汎用midrollは撤去。
+6. News Continuous の非定時コピーは1記事ごとに約3分の `NewsCommentary`、定時ラジオ枠は短い `NewsBriefComment` を生成する。両方とも既存MP3のループBGMをミックスする。LLM HTTPには90秒timeoutを設定。
+7. ニュース収集は再生と独立したgoroutineで継続。候補Storeは取得時刻も保持し、48時間TTLと正規化タイトル重複排除を行う。OGP画像取得も最大3並列・1回20記事で非同期化し、TTS/再生を待たせない。
+8. UIはPC向け3カラム、明示的NOW/NEXT、ニュースカード、AI DJ発話、音量、モード/READY、折りたたみニュース設定を一画面に整理。API失敗はtoast表示し、リクエスト失敗時に入力を消さない。SSEは1本。外部DiceBear依存を廃止し `/dj-avatar.svg` を同梱。HTMLとservice workerは再検証されるキャッシュ設定。
+9. タムラ製作所は固定監視から外し、`news_exclude_terms: ["タムラ製作所"]` で記事自体も候補から除外した。`watch_symbols` は空。
+10. 株式記事だけ、記事に明示された証券コード、またはJ-Quants銘柄マスターの正式会社名が本文に厳密一致した会社を対象にする。無関係な固定銘柄は送らない。取得可能な昨日以前の直近5終値と最新財務開示をAIへ渡し、「上昇要因・下落要因・確認点」の条件付き見通しを話す。断定的予測・投資助言は禁止。Free planは12週間遅延しうるため、その可能性を明示する。
+
+### 2026-09-04の検証結果
+
+- `gofmt` 済み、`git diff --check` 問題なし。
+- `go test ./...` 全成功。
+- `go build -o radio-dj-next.exe .` 成功。
+- 実UIをブラウザで確認：NOW/NEXT、ニュース、ローカルDJアバター、再生音量、モード、READY、transportが表示。
+- 実ランタイム：`mode=news`、フォールバック音楽中にREADYが蓄積し、曲を途中で切らず終了後に `current.type=news` へ遷移。
+- BGMミックスの既存実ログ：bulletin / AI commentary とも `BGM mixed ... at 15%`。
+
+### 次に行うこと（未完）
+
+- News Continuousで約3時間動作し、READY補充、ニュース+BGM、AIコメント+BGM、記事切替、J-Quants記事相関をログ確認した。11:49頃にGoのpanic/終了ログを残さずプロセスが消え、子ffmpegだけbroken pipeになったため、外部終了か未捕捉終了かは未確定。11:51に再起動済み。次回はプロセス終了コードを監視できるランチャーで再現性を確認する。
+- `gpt-4.1-mini` の実出力で、会社一致した株式記事が「昨日以前の推移＋条件付き見通し」になっているか音声/ログを確認する。APIプランの遅延データを「昨日の実勢」と誤称しないこと。
+- J-Quants銘柄マスターがページング応答になるプランの場合、正式会社名照合が先頭ページだけに限定されないか実レスポンスで確認する。
+- 設定/診断をUIから編集する大規模機能までは今回実装していない。安定性を崩す追加改造より上記耐久確認を優先する。
+- 古い本文の `Latest handoff — 2026-09-03` やOllama記述は履歴として残っているが、現在値はこの2026-09-04節を正とする。
+
 ## Latest handoff — 2026-09-03
 
 - Branch: `feature/news-radio`; GitHub was fetched through `81e292b`, then

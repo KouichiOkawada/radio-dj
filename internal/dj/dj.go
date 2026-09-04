@@ -27,6 +27,8 @@ type DJ struct {
 	p                      i18n.Prompts
 }
 
+var llmHTTPClient = &http.Client{Timeout: 90 * time.Second}
+
 // Director plan types — the structured in/out of the one-call-per-tanda DJ
 // planner (DirectPlan). The LLM receives a Ctx and returns a Plan.
 type (
@@ -154,8 +156,8 @@ func (d *DJ) NewsCommentary(source, title, description, marketContext string) st
 		prompt += "\nRSS概要: " + description
 	}
 	if strings.TrimSpace(marketContext) != "" {
-		prompt += "\nJ-Quantsで確認したウォッチ銘柄情報（ニュースとの直接関係は断定しないこと。値の単位を推測せず、開示日を必ず添えること）:\n" + marketContext +
-			"\n株式ニュースでは、この情報から最低1銘柄を必ず取り上げ、ニュースとの共通点または相違点を私見として述べてください。"
+		prompt += "\n記事中の会社名または証券コードと照合したJ-Quants情報:\n" + marketContext +
+			"\n取得可能な昨日以前の終値について、直近数営業日の方向と開示事実を説明してください。そのうえで今後について、上昇要因・下落要因・確認すべき点を分け、断定的な株価予測ではなく条件付きの見通しとして述べてください。投資助言はせず、J-Quantsのプランによるデータ遅延の可能性にも触れてください。"
 	}
 	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 1200))
 }
@@ -173,8 +175,8 @@ func (d *DJ) NewsBriefComment(source, title, description, marketContext string) 
 		prompt += "\nRSS概要: " + description
 	}
 	if strings.TrimSpace(marketContext) != "" {
-		prompt += "\nJ-Quantsで確認した情報（ニュースとの因果関係は断定しないこと。値の単位を推測せず、開示日を添えること）:\n" + marketContext +
-			"\nこの情報から最低1銘柄に触れ、ニュースとの共通点または相違点を私見として短く述べてください。"
+		prompt += "\n記事中の会社名または証券コードと照合したJ-Quants情報:\n" + marketContext +
+			"\n取得可能な昨日以前の終値の方向を簡潔に説明し、今後は上昇要因と下落要因を条件付きで一つずつ示してください。断定的な株価予測や投資助言はせず、データ遅延の可能性にも触れてください。"
 	}
 	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 260))
 }
@@ -191,6 +193,19 @@ func (d *DJ) Banter(title, artist, album string) string {
 		"title":  title,
 		"credit": d.credit(artist, album),
 	}))
+}
+
+// Backsell is prepared while a song is playing and may air after it finishes.
+// It never promises a next item, so a late or changed playlist stays truthful.
+func (d *DJ) Backsell(title, artist, album string) string {
+	prompt := "今流れ終えた曲について、日本語のラジオDJとして10〜20秒、2〜3文で余韻のある短いコメントをしてください。" +
+		"曲名・アーティスト・アルバム以外の事実は知らない前提で、制作背景や歌詞の意味を創作しないでください。" +
+		"次の曲やニュースを予告せず、箇条書きや挨拶も使わないでください。\n" +
+		"曲名: " + title + "\nアーティスト: " + artist
+	if strings.TrimSpace(album) != "" {
+		prompt += "\nアルバム: " + album
+	}
+	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 180))
 }
 
 // SayMidroll is a short mid-song commentary.
@@ -282,7 +297,7 @@ func (d *DJ) completeWithTokens(user string, search bool, maxTokens int) string 
 		req.Header.Set("Authorization", "Bearer "+d.apiKey)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -333,7 +348,7 @@ func (d *DJ) completeJSON(system, user string) string {
 		req.Header.Set("Authorization", "Bearer "+d.apiKey)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
 		return ""
 	}

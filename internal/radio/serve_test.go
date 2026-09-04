@@ -3,26 +3,17 @@ package radio
 import (
 	"testing"
 	"time"
-
-	"radio-dj/internal/news"
 )
 
-func TestMayInterruptForNewsOnlyInContinuousOrDueRadioSlot(t *testing.T) {
-	loc, _ := time.LoadLocation("Asia/Tokyo")
-	at := func(hour, minute int) time.Time {
-		return time.Date(2026, time.September, 4, hour, minute, 0, 0, loc)
+func TestPlaybackModeAppliesRequestOnlyAtBoundary(t *testing.T) {
+	modes := newPlaybackMode("radio")
+	current, pending := modes.Request("news")
+	if current != "radio" || pending != "news" || modes.Get() != "radio" {
+		t.Fatalf("request changed on-air mode: current=%q pending=%q on-air=%q", current, pending, modes.Get())
 	}
-	if mayInterruptForNews("radio", news.NewProgramClock(), at(6, 15)) {
-		t.Fatal("radio music was interruptible before a scheduled news slot")
-	}
-	if !mayInterruptForNews("radio", news.NewProgramClock(), at(6, 30)) {
-		t.Fatal("radio did not allow interruption at a scheduled news slot")
-	}
-	if !mayInterruptForNews("news", news.NewProgramClock(), at(6, 15)) {
-		t.Fatal("news continuous should replace filler as soon as news is ready")
-	}
-	if mayInterruptForNews("music", news.NewProgramClock(), at(6, 30)) {
-		t.Fatal("music-only mode must never be interrupted by news")
+	applied, ok := modes.ApplyPending()
+	if !ok || applied != "news" || modes.Get() != "news" {
+		t.Fatalf("boundary did not apply request: applied=%q ok=%v", applied, ok)
 	}
 }
 

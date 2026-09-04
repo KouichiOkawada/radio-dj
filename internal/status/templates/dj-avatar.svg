@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">AI DJ アイコ</title><desc id="desc">ヘッドホンを着けた女性DJのイラスト</desc>
+  <rect width="160" height="160" rx="28" fill="#ffd5dc"/>
+  <circle cx="80" cy="82" r="48" fill="#382b36"/>
+  <path d="M42 79c0-32 17-53 39-53s39 21 39 53v25H42z" fill="#513b56"/>
+  <ellipse cx="80" cy="83" rx="33" ry="39" fill="#ffe8d1"/>
+  <path d="M48 74c4-29 17-42 36-42 19 0 31 14 31 37-11-1-24-8-31-18-8 12-21 19-36 23z" fill="#513b56"/>
+  <path d="M55 65c-8 2-13 10-13 22v16M105 65c8 2 13 10 13 22v16" fill="none" stroke="#242126" stroke-width="8" stroke-linecap="round"/>
+  <rect x="35" y="83" width="15" height="27" rx="7" fill="#f04d46" stroke="#242126" stroke-width="4"/>
+  <rect x="110" y="83" width="15" height="27" rx="7" fill="#f04d46" stroke="#242126" stroke-width="4"/>
+  <circle cx="68" cy="83" r="3" fill="#242126"/><circle cx="93" cy="83" r="3" fill="#242126"/>
+  <path d="M70 100c7 6 14 6 21 0" fill="none" stroke="#d8463a" stroke-width="4" stroke-linecap="round"/>
+  <path d="M118 105c0 12-8 18-20 18" fill="none" stroke="#242126" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="96" cy="123" r="4" fill="#f04d46"/>
+  <path d="M39 160c5-25 20-38 41-38s36 13 41 38" fill="#f7b84b" stroke="#242126" stroke-width="4"/>
+</svg>
