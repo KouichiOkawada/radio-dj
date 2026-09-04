@@ -141,6 +141,25 @@ func (d *DJ) NewsComment(source, title, description string) string {
 	return stripUnknownForwardCue(d.complete(prompt, false))
 }
 
+// NewsBulletin rewrites one RSS item into an attributed, broadcast-ready
+// summary. The RSS fields are the complete factual boundary: the model is a
+// script editor here, not an additional news source.
+func (d *DJ) NewsBulletin(source, title, description, publishedAt string) string {
+	prompt := "次のRSSニュース1件を、日本のFMラジオのパーソナリティが伝える自然なニュース原稿に要約してください。" +
+		"長さは30〜60秒、250〜400文字程度です。最初に話題を端的に示し、重要な点を聞き取りやすい順番で説明し、最後は次の解説へ自然につながる一文で閉じてください。" +
+		"見出しとRSS概要に存在しない事実、数字、原因、背景、人物の発言は絶対に追加しないでください。概要が乏しい場合は無理に膨らませず短くしてください。" +
+		"出典名と配信時刻が与えられている場合は自然に明示してください。『最新ニュース』とは決めつけず、次の曲やニュースも予告しないでください。" +
+		"見出し、箇条書き、注釈は使わず、そのまま音声合成へ渡せる日本語の話し言葉だけを返してください。\n" +
+		"出典: " + source + "\n見出し: " + title
+	if strings.TrimSpace(publishedAt) != "" {
+		prompt += "\nRSS配信時刻: " + publishedAt
+	}
+	if strings.TrimSpace(description) != "" {
+		prompt += "\nRSS概要: " + description
+	}
+	return stripUnknownForwardCue(d.completeWithTokens(prompt, false, 650))
+}
+
 // NewsCommentary is the long-form, grounded companion for one article. It
 // deliberately has a larger completion budget than ordinary song banter: at a
 // natural Japanese TTS pace 900–1100 characters is roughly three minutes. The
@@ -148,7 +167,7 @@ func (d *DJ) NewsComment(source, title, description string) string {
 // framed as the DJ's own view.
 func (d *DJ) NewsCommentary(source, title, description, marketContext string) string {
 	prompt := "いま読み上げたニュースについて、日本語のラジオDJとして約3分間、900〜1100文字を目安に話してください。" +
-		"最初に、下の見出しと概要だけを使って聞き手に分かりやすく要点を言い換えてください。続いて、この話題が気になる理由、生活や市場で注目したい観点、聞き手への穏やかな問いかけを、DJ自身の私見として自然に話してください。" +
+		"ニュース原稿は直前に読まれているので長く復唱せず、『この話題、私が気になったのは』のような短い受けから始めてください。続いて、この話題が気になる理由、生活や市場で注目したい観点、聞き手への穏やかな問いかけを、DJ自身の私見として自然に話してください。" +
 		"下にない事実、数字、原因、背景、人物の発言は絶対に追加しないでください。事実と感想を混同せず、推測は『かもしれません』『注目したいですね』のように表現してください。" +
 		"次の曲や次のニュースを予告せず、『音楽をどうぞ』『続いて』などの進行も言わないでください。箇条書き・見出しは使わず、自然な話し言葉だけで返してください。\n" +
 		"出典: " + source + "\n見出し: " + title

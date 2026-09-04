@@ -116,9 +116,16 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			}
 			snapshot = filtered
 		}
+		isScheduled := p.canPrepareScheduled(slot)
 		var items []news.Item
 		if priority != "" {
 			if item, ok := queue.ReserveItemsPreferred(snapshot, time.Duration(cfg.NewsMaxAgeHours)*time.Hour, priority); ok {
+				items = []news.Item{item}
+			}
+		} else if !isScheduled {
+			// This second copy feeds News Continuous: one AI summary followed
+			// by the matching long commentary, then the next article.
+			if item, ok := queue.ReserveItems(snapshot, time.Duration(cfg.NewsMaxAgeHours)*time.Hour); ok {
 				items = []news.Item{item}
 			}
 		} else {
@@ -130,13 +137,20 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			p.wait(30 * time.Second)
 			continue
 		}
-		isScheduled := p.canPrepareScheduled(slot)
-
 		p.status.SetNewsPreview(toNewsStatus(items[0], ""))
 		segments := make([]Segment, 0, len(items)+1)
 		renderFailed := false
 		for _, item := range items {
-			bulletin := strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
+			bulletin := ""
+			if djx != nil {
+				bulletin = strings.TrimSpace(djx.NewsBulletin(item.Source, item.Title, item.Description, item.PublishedAt))
+			}
+			if bulletin == "" {
+				// AI or provider failure must not turn the station silent. This
+				// fallback is still strictly bounded to the same RSS facts.
+				log.Printf("[news] AI summary unavailable; using deterministic RSS script: %s", item.Title)
+				bulletin = strings.TrimSpace(news.Script([]news.Item{item}, cfg.Language))
+			}
 			if bulletin == "" {
 				log.Printf("[news] preload skipped empty bulletin: %s", item.Title)
 				renderFailed = true
@@ -171,7 +185,7 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		// The commentary is opinion/personality only. It is grounded on the RSS
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
-		if djx != nil && (slot.Kind != news.ProgramFlash || priority != "" || source != "") {
+		if djx != nil && (!isScheduled || slot.Kind != news.ProgramFlash || priority != "" || source != "") {
 			item := items[0]
 			for _, candidate := range items {
 				if strings.EqualFold(candidate.Category, "stock") {
@@ -383,6 +397,11 @@ func (p *newsPreloader) markAired(seg Segment) {
 	} else {
 		p.queue.MarkAired(*seg.News)
 	}
+	if seg.Program != nil {
+		p.readyMu.Lock()
+		delete(p.scheduled, newsSlotKey(*seg.Program))
+		p.readyMu.Unlock()
+	}
 }
 
 // releaseSegments returns any reserved story from a discarded prefetched
@@ -392,6 +411,11 @@ func (p *newsPreloader) releaseSegments(segments []Segment) {
 		return
 	}
 	for _, seg := range segments {
+		if seg.Program != nil {
+			p.readyMu.Lock()
+			delete(p.scheduled, newsSlotKey(*seg.Program))
+			p.readyMu.Unlock()
+		}
 		if seg.IsNews && seg.News != nil {
 			if len(seg.NewsItems) > 0 {
 				for _, item := range seg.NewsItems {
@@ -472,15 +496,16 @@ func (p *newsPreloader) tryTake(slot *news.ProgramSlot) ([]Segment, bool) {
 				break
 			}
 		}
-		if pick < 0 && len(items) > 0 {
-			pick = 0
-		}
+		// News Continuous must never consume the reserved scheduled copy:
+		// that can be a multi-headline flash without the per-article long talk.
+		// Keep music on until the dedicated continuous entry is ready.
 	}
 	var selected preparedNews
 	for i, prepared := range items {
 		if i == pick {
 			selected = prepared
-			p.forgetScheduled(prepared)
+			// A scheduled slot remains reserved while its audio is in flight.
+			// markAired or releaseSegments clears it at the real lifecycle end.
 			p.readyStories.Add(-int32(countNewsSegments(prepared.segments)))
 			continue
 		}

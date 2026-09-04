@@ -56,3 +56,17 @@ func TestScheduledSlotCannotBePreparedTwice(t *testing.T) {
 		t.Fatal("duplicate scheduled slot was accepted")
 	}
 }
+
+func TestContinuousModeDoesNotConsumeScheduledBulletin(t *testing.T) {
+	p := testNewsPreloader(t)
+	slot := news.ProgramSlot{Kind: news.ProgramFlash, At: time.Now().Add(time.Hour).Truncate(time.Second)}
+	p.ready <- preparedNews{slot: slot, kind: slot.Kind, scheduled: true, segments: []Segment{{IsNews: true, Text: "scheduled"}}}
+	p.readyStories.Store(1)
+	segments, ok := p.tryTake(nil)
+	if ok || segments != nil {
+		t.Fatalf("continuous mode consumed scheduled bulletin: %#v", segments)
+	}
+	if len(p.ready) != 1 {
+		t.Fatal("scheduled bulletin was not preserved")
+	}
+}

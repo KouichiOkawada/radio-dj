@@ -884,16 +884,17 @@
     renderNewsSources(j);
     const newsCard = $('news-card');
     const djCard = $('dj-card');
-    const shownNews = c.type === 'news' ? c : (j.news_preview || {});
+    const shownNews = (c.type === 'news' || (c.type === 'dj' && c.url)) ? c : (j.news_preview || {});
     const hasNews = !!shownNews.title;
     $('news-kicker').textContent = c.type === 'news'
-      ? 'NEWS · BGM ON AIR'
+      ? 'NEWS · AI SUMMARY · BGM ON AIR'
+      : (c.type === 'dj' && c.url) ? 'NEWS COMMENTARY · BGM ON AIR'
       : (hasNews && j.news_ready ? 'NEXT NEWS · 放送準備済み' : (hasNews ? 'NEWS DESK · 次のニュース音声を準備中' : (j.news_state === 'waiting' ? 'NEWS DESK · 新しいニュースを待っています' : 'NEWS DESK · ニュースを収集中')));
     if(hasNews){
       $('news-title').textContent = shownNews.title || 'ニュース';
       const categoryNames = {stock:'株式',finance:'経済',general:'一般',hokkaido:'北海道',tech:'テック'};
       $('news-meta').textContent = [categoryNames[shownNews.category] || shownNews.category, shownNews.source, shownNews.published_at].filter(Boolean).join(' / ');
-      $('news-desc').textContent = shownNews.description || shownNews.speech_text || '';
+      $('news-desc').textContent = shownNews.speech_text || shownNews.description || '';
       const link = $('news-link');
       link.hidden = !shownNews.url; link.href = shownNews.url || '#';
       const image = $('news-image');

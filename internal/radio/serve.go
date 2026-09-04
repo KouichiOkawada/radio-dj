@@ -180,6 +180,7 @@ func Serve(cfg config.Config) error {
 	programClock := news.NewProgramClock(cfg.StateDir)
 	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
 	djPrep := startDJPreloader(djx, vox)
+	clockPrep := startClockPreloader(vox)
 	st.SetNewsPriorityHandler(newsPrep.SetPriority)
 	st.SetNewsSourceHandler(newsPrep.SetSource)
 
@@ -307,6 +308,21 @@ func Serve(cfg config.Config) error {
 	// Consumer: play each tanda as it arrives; the next is already being built.
 	var previousTrack *Segment
 	songsSinceTalk := 0
+	lastAnnouncedHour := ""
+	announceClock := func(next status.Track) {
+		announcement, ok := clockPrep.TryTake(time.Now(), lastAnnouncedHour)
+		if !ok {
+			return
+		}
+		st.SetCurrent(status.Track{Type: "dj", Title: "時刻案内", SpeechText: announcement.text}, next)
+		logDJ(status.LogKindTime, announcement.text)
+		if err := streamer.Play(announcement.path); err != nil {
+			log.Printf("[clock] segment error: %v", err)
+		} else {
+			lastAnnouncedHour = announcement.hour
+		}
+		cleanupDJVoice(announcement.path)
+	}
 	talkCadence := cfg.DJEvery
 	if talkCadence < 2 {
 		talkCadence = 2
@@ -369,6 +385,7 @@ func Serve(cfg config.Config) error {
 				}
 			}
 			if seg.IsNews {
+				announceClock(toNewsStatus(*seg.News, seg.Text))
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
 				if err := streamer.Play(seg.Path); err != nil {
@@ -384,10 +401,13 @@ func Serve(cfg config.Config) error {
 				continue
 			}
 			if seg.IsDJ {
+				announceClock(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text})
 				if seg.News != nil {
 					// A post-news discussion belongs to the article that prompted it.
 					// Keep its title, source and image visible for the whole talk.
-					st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
+					commentary := toNewsStatus(*seg.News, seg.Text)
+					commentary.Type = "dj"
+					st.SetCurrent(commentary, toStatus(nextTrack(segs, i)))
 				} else {
 					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
 				}
@@ -406,6 +426,7 @@ func Serve(cfg config.Config) error {
 					cleanupDJVoice(seg.Path)
 					continue
 				}
+				announceClock(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text})
 				st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text}, toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
 				if err := streamer.Play(seg.Path); err != nil {
@@ -433,6 +454,7 @@ func Serve(cfg config.Config) error {
 			cleanupTransient(cfg.AutoMusicTempDir, seg.Path)
 			if perr == nil && prepareTalk && modes.Pending() == "" && modes.Get() == "radio" {
 				if talk, ok := djPrep.TryTake(seg.Meta); ok {
+					announceClock(status.Track{Type: "dj", Title: "AI DJ", SpeechText: talk.text})
 					st.SetCurrent(status.Track{Type: "dj", Title: "AI DJ", SpeechText: talk.text}, status.Track{})
 					logDJ(status.LogKindDJ, talk.text)
 					if err := streamer.Play(talk.path); err != nil {
