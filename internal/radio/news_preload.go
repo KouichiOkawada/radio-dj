@@ -37,6 +37,7 @@ type newsPreloader struct {
 	scheduled    map[string]bool
 	generation   atomic.Uint64
 	readyStories atomic.Int32
+	audience     *audienceGate
 }
 
 type preparedNews struct {
@@ -50,7 +51,7 @@ type preparedNews struct {
 
 const newsStockSize = 2
 
-func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock, st *status.Server) *newsPreloader {
+func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *news.Queue, store *news.Store, clock *news.ProgramClock, st *status.Server, audience *audienceGate) *newsPreloader {
 	p := &newsPreloader{
 		ready:     make(chan preparedNews, newsStockSize),
 		status:    st,
@@ -61,6 +62,7 @@ func startNewsPreloader(cfg config.Config, djx *dj.DJ, vox *voice.Voice, queue *
 		wake:      make(chan struct{}, 1),
 		scheduled: map[string]bool{},
 		enabled:   vox != nil && queue != nil && store != nil && clock != nil && len(cfg.NewsFeeds) > 0,
+		audience:  audience,
 	}
 	for _, feed := range cfg.NewsFeeds {
 		p.sources[feed.Name] = true
@@ -81,7 +83,7 @@ func (p *newsPreloader) publish(state string) {
 		return
 	}
 	count := int(p.readyStories.Load())
-	if len(p.ready) > 0 && state != "unavailable" {
+	if len(p.ready) > 0 && state != "unavailable" && state != "paused-no-listeners" {
 		state = "ready"
 	}
 	p.status.SetNewsReadiness(count > 0, count, state)
@@ -91,6 +93,11 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 	market := news.NewJQuants(cfg.JQuantsAPIKey)
 	for {
 		p.pruneReady(time.Now())
+		if p.audience != nil && !p.audience.Active() {
+			p.publish("paused-no-listeners")
+			p.wait(5 * time.Second)
+			continue
+		}
 		// Keep several complete, article-sized breaks ready while music, news, or
 		// DJ commentary is on air. Each entry has its own metadata, so the player
 		// can switch its article card exactly when the next story begins.
@@ -141,6 +148,10 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 		segments := make([]Segment, 0, len(items)+1)
 		renderFailed := false
 		for _, item := range items {
+			if p.audience != nil && !p.audience.Active() {
+				renderFailed = true
+				break
+			}
 			bulletin := ""
 			if djx != nil {
 				bulletin = strings.TrimSpace(djx.NewsBulletin(item.Source, item.Title, item.Description, item.PublishedAt))
@@ -181,11 +192,19 @@ func (p *newsPreloader) run(cfg config.Config, djx *dj.DJ, vox *voice.Voice, que
 			p.wait(5 * time.Second)
 			continue
 		}
+		if p.audience != nil && !p.audience.Active() {
+			p.releaseSegments(segments)
+			for _, item := range items {
+				queue.Release(item)
+			}
+			p.publish("paused-no-listeners")
+			continue
+		}
 
 		// The commentary is opinion/personality only. It is grounded on the RSS
 		// source/title/description and is prepared before the break is advertised
 		// READY, so a slow local reasoning model cannot create dead air later.
-		if djx != nil && (!isScheduled || slot.Kind != news.ProgramFlash || priority != "" || source != "") {
+		if djx != nil && (p.audience == nil || p.audience.Active()) && (!isScheduled || slot.Kind != news.ProgramFlash || priority != "" || source != "") {
 			item := items[0]
 			for _, candidate := range items {
 				if strings.EqualFold(candidate.Category, "stock") {

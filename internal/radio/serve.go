@@ -144,6 +144,7 @@ func Serve(cfg config.Config) error {
 	}
 	st.SetNewsSources(newsSources)
 	modes := newPlaybackMode(cfg.PlayMode)
+	audience := &audienceGate{}
 	newsQueue := news.NewQueue(cfg.StateDir)
 	newsStore := news.NewStore(cfg.NewsExcludeTerms...)
 	collectorCtx, stopCollectors := context.WithCancel(context.Background())
@@ -161,6 +162,7 @@ func Serve(cfg config.Config) error {
 			log.Printf("[radio-dj] WARN i18n: %v", perr)
 		}
 		djx = dj.New(cfg.LLMProvider, cfg.GLMBaseURL, cfg.GLMAPIKey, cfg.GLMModel, cfg.StationName, cfg.LocationName, prompts)
+		djx.SetRequestAllowed(audience.Active)
 		vox = voice.New(cfg.VoiceProvider, cfg.Voice, cfg.VoiceCmd)
 		pool = skills.NewPool(cfg.StationName, cfg.LocationName, cfg.Latitude, cfg.Longitude, skills.LoadDir(cfg.StateDir, cfg.Language))
 		log.Printf("[radio-dj] DJ on: %s @ %s · every %d · bed=%s",
@@ -178,7 +180,7 @@ func Serve(cfg config.Config) error {
 		log.Printf("[musicfeed] automatic open-music pool enabled: %s", cfg.AutoMusicTempDir)
 	}
 	programClock := news.NewProgramClock(cfg.StateDir)
-	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st)
+	newsPrep := startNewsPreloader(cfg, djx, vox, newsQueue, newsStore, programClock, st, audience)
 	djPrep := startDJPreloader(djx, vox)
 	clockPrep := startClockPreloader(vox)
 	st.SetNewsPriorityHandler(newsPrep.SetPriority)
@@ -186,6 +188,7 @@ func Serve(cfg config.Config) error {
 
 	// Bring up icecast ourselves unless an external one is configured.
 	srcPw := cfg.IcecastSourcePW
+	st.SetIcecast(fmt.Sprintf("http://%s:%d", cfg.IcecastHost, cfg.IcecastPort), "")
 	if srcPw == "" {
 		ic, ierr := supervisor.EnsureIcecast(cfg.StateDir, cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount)
 		if ierr != nil {
@@ -195,6 +198,7 @@ func Serve(cfg config.Config) error {
 		st.SetIcecast(fmt.Sprintf("http://%s:%d", cfg.IcecastHost, cfg.IcecastPort), ic.AdminPassword())
 		log.Printf("[radio-dj] icecast supervised (credentials loaded)")
 	}
+	startAudienceMonitor(collectorCtx, st, audience, newsPrep.Wake)
 
 	streamer, err := icecast.OpenStreamer(cfg.IcecastHost, cfg.IcecastPort, cfg.IcecastMount, cfg.Encoder, srcPw, cfg.StationName, cfg.Bitrate)
 	if err != nil {
@@ -291,7 +295,7 @@ func Serve(cfg config.Config) error {
 				time.Sleep(250 * time.Millisecond)
 				continue
 			}
-			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, programClock, &tc)
+			segs, reqs, berr := buildTanda(cfg, lib, djx, vox, pool, st, mode, newsPrep, programClock, audience, &tc)
 			if berr != nil {
 				log.Printf("[radio-dj] build: %v — retry 10s", berr)
 				time.Sleep(10 * time.Second)
@@ -310,6 +314,9 @@ func Serve(cfg config.Config) error {
 	songsSinceTalk := 0
 	lastAnnouncedHour := ""
 	announceClock := func(next status.Track) {
+		if !audience.Active() {
+			return
+		}
 		announcement, ok := clockPrep.TryTake(time.Now(), lastAnnouncedHour)
 		if !ok {
 			return
@@ -385,6 +392,10 @@ func Serve(cfg config.Config) error {
 				}
 			}
 			if seg.IsNews {
+				if !audience.Active() {
+					newsPrep.releaseSegments([]Segment{seg})
+					continue
+				}
 				announceClock(toNewsStatus(*seg.News, seg.Text))
 				st.SetCurrent(toNewsStatus(*seg.News, seg.Text), toStatus(nextTrack(segs, i)))
 				logDJ(status.LogKindDJ, seg.Text)
@@ -401,6 +412,10 @@ func Serve(cfg config.Config) error {
 				continue
 			}
 			if seg.IsDJ {
+				if !audience.Active() {
+					newsPrep.cleanupSegment(seg)
+					continue
+				}
 				announceClock(status.Track{Type: "dj", Title: "AI DJ", SpeechText: seg.Text})
 				if seg.News != nil {
 					// A post-news discussion belongs to the article that prompted it.
@@ -422,7 +437,7 @@ func Serve(cfg config.Config) error {
 				// Unknown vocal intros are never overlaid on a song. Only already
 				// rendered speech may air here; live LLM work and generic midrolls
 				// are skipped so the next music segment is never delayed.
-				if seg.LiveTime || seg.Midroll || seg.Path == "" {
+				if !audience.Active() || seg.LiveTime || seg.Midroll || seg.Path == "" {
 					cleanupDJVoice(seg.Path)
 					continue
 				}
@@ -439,7 +454,7 @@ func Serve(cfg config.Config) error {
 			st.SetCurrent(toStatus(seg.Meta), toStatus(nextTrack(segs, i)))
 			log.Printf("▶ %s — %s", seg.Meta.Title, seg.Meta.Artist)
 			songsSinceTalk++
-			prepareTalk := currentMode == "radio" && cfg.DJEnabled && songsSinceTalk >= talkCadence
+			prepareTalk := audience.Active() && currentMode == "radio" && cfg.DJEnabled && songsSinceTalk >= talkCadence
 			if prepareTalk {
 				djPrep.Prepare(seg.Meta)
 			}
@@ -542,7 +557,7 @@ func cleanupTransient(tempDir, path string) {
 // buildTanda returns the ordered segments for one batch (requested songs
 // first, then fresh picks), with DJ voice intros interleaved. Voices are
 // generated here (GLM+qohl) — called by the producer ahead of playback.
-func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsPrep *newsPreloader, programClock *news.ProgramClock, trackCount *int) (segs []Segment, reqs string, err error) {
+func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.Voice, pool *skills.Pool, st *status.Server, mode string, newsPrep *newsPreloader, programClock *news.ProgramClock, audience *audienceGate, trackCount *int) (segs []Segment, reqs string, err error) {
 	addVoice := func(text string, midroll bool) {
 		if !cfg.DJEnabled || vox == nil || strings.TrimSpace(text) == "" {
 			return
@@ -558,6 +573,9 @@ func buildTanda(cfg config.Config, lib library.Library, djx *dj.DJ, vox *voice.V
 		segs = append(segs, Segment{Path: t.Src, Meta: t})
 	}
 	addNews := func(slot *news.ProgramSlot) bool {
+		if !audience.Active() {
+			return false
+		}
 		prepared, ok := newsPrep.tryTake(slot)
 		if !ok {
 			return false

@@ -38,3 +38,20 @@ func TestNewsBulletinSendsRSSFactsToAI(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestGuardPreventsHTTPCall(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"unexpected"}}]}`))
+	}))
+	defer server.Close()
+	host := New("openai", server.URL, "test-key", "test-model", "test", "Tokyo", i18n.Prompts{})
+	host.SetRequestAllowed(func() bool { return false })
+	if got := host.NewsBulletin("source", "title", "description", "now"); got != "" {
+		t.Fatalf("guarded completion=%q, want empty", got)
+	}
+	if calls != 0 {
+		t.Fatalf("HTTP calls=%d, want 0", calls)
+	}
+}

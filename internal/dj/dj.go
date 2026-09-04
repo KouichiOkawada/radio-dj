@@ -25,6 +25,7 @@ type DJ struct {
 	baseURL, apiKey, model string
 	station, location      string
 	p                      i18n.Prompts
+	requestAllowed         func() bool
 }
 
 var llmHTTPClient = &http.Client{Timeout: 90 * time.Second}
@@ -73,6 +74,12 @@ type (
 func New(provider, baseURL, apiKey, model, station, location string, p i18n.Prompts) *DJ {
 	return &DJ{provider: provider, baseURL: baseURL, apiKey: apiKey, model: model, station: station, location: location, p: p}
 }
+
+// SetRequestAllowed installs a last-line cost guard checked immediately before
+// every OpenAI-compatible HTTP call, including older director/skill paths.
+func (d *DJ) SetRequestAllowed(allowed func() bool) { d.requestAllowed = allowed }
+
+func (d *DJ) canRequest() bool { return d != nil && (d.requestAllowed == nil || d.requestAllowed()) }
 
 // systemPrompt fills the standing persona with station + location.
 // todLabel returns the localized time-of-day word for the hour, looked up in
@@ -293,6 +300,9 @@ func (d *DJ) complete(user string, search bool) string {
 }
 
 func (d *DJ) completeWithTokens(user string, search bool, maxTokens int) string {
+	if !d.canRequest() {
+		return ""
+	}
 	body := map[string]any{
 		"model": d.model,
 		"messages": []map[string]string{
@@ -342,6 +352,9 @@ func (d *DJ) completeWithTokens(user string, search bool, maxTokens int) string 
 // director planner (the plan is longer than a spoken one-liner). Returns the
 // raw model content; the caller parses the JSON.
 func (d *DJ) completeJSON(system, user string) string {
+	if !d.canRequest() {
+		return ""
+	}
 	maxTokens := 1200
 	if d.provider == "ollama" {
 		maxTokens = 2400

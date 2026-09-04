@@ -864,6 +864,7 @@
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
     const engine = $('news-engine-state');
     if(state === 'unavailable') engine.textContent = 'NEWS ENGINE · 利用不可';
+    else if(state === 'paused-no-listeners') engine.textContent = 'NEWS ENGINE · リスナー待機中 · OpenAI停止';
     else if(snapshot.news_ready) engine.textContent = `NEWS ENGINE · READY · ${count}件先読み済み${nextLabel}`;
     else if(snapshot.pending_mode === 'news') engine.textContent = `NEWS ENGINE · ニュース連続へ切替予約済み · 現在の内容終了後${nextLabel}`;
     else if(state === 'waiting') engine.textContent = `NEWS ENGINE · 新着確認中${nextLabel}`;

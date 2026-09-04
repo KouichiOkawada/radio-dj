@@ -63,7 +63,7 @@ type NowPlaying struct {
 	Listeners      int       `json:"listeners,omitempty"`
 	NewsReady      bool      `json:"news_ready"`
 	NewsReadyCount int       `json:"news_ready_count"`
-	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | unavailable
+	NewsState      string    `json:"news_state,omitempty"` // loading | ready | waiting | paused-no-listeners | unavailable
 	NewsPreview    *Track    `json:"news_preview,omitempty"`
 	NewsPriority   string    `json:"news_priority,omitempty"`
 	NewsSource     string    `json:"news_source,omitempty"`
@@ -388,27 +388,102 @@ func (s *Server) SetIcecast(baseURL, adminPw string) {
 	s.mu.Unlock()
 }
 
+// PollListeners synchronously refreshes the small Icecast statistic used to
+// gate paid AI work. Failure is reported as unknown so a transient admin API
+// error does not incorrectly flip a previously confirmed audience state.
+func (s *Server) PollListeners() (int, bool) {
+	s.mu.RLock()
+	configured := s.icBase != ""
+	s.mu.RUnlock()
+	if !configured {
+		return 0, false
+	}
+	return s.refreshListeners()
+}
+
 // refreshListeners fetches the global listener count from icecast /admin/stats
 // (the first <listeners>N</listeners> in the XML is the mount's total — all we
 // need for a single-mount station) and updates the cache.
-func (s *Server) refreshListeners() {
-	req, err := http.NewRequest("GET", s.icBase+"/admin/stats", nil)
-	if err != nil {
-		return
+func (s *Server) refreshListeners() (int, bool) {
+	s.mu.RLock()
+	baseURL, password := s.icBase, s.icPw
+	s.mu.RUnlock()
+	endpoint := baseURL + "/admin/stats"
+	if password == "" {
+		endpoint = baseURL + "/status-json.xsl"
 	}
-	req.SetBasicAuth("admin", s.icPw)
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return 0, false
+	}
+	if password != "" {
+		req.SetBasicAuth("admin", password)
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return 0, false
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, false
+	}
 	body, _ := io.ReadAll(resp.Body)
-	n := parseListeners(string(body))
+	n := 0
+	if password != "" {
+		n = parseListeners(string(body))
+	} else {
+		var ok bool
+		n, ok = parsePublicListeners(body, s.mount)
+		if !ok {
+			return 0, false
+		}
+	}
 	s.mu.Lock()
+	changed := s.icListeners != n
 	s.icListeners = n
 	s.icCacheT = time.Now()
 	s.mu.Unlock()
+	if changed {
+		go s.broadcast()
+	}
+	return n, true
+}
+
+func parsePublicListeners(body []byte, mount string) (int, bool) {
+	var doc struct {
+		IceStats struct {
+			Source json.RawMessage `json:"source"`
+		} `json:"icestats"`
+	}
+	if json.Unmarshal(body, &doc) != nil {
+		return 0, false
+	}
+	if len(doc.IceStats.Source) == 0 || string(doc.IceStats.Source) == "null" {
+		return 0, true
+	}
+	type source struct {
+		ListenURL string `json:"listenurl"`
+		Listeners int    `json:"listeners"`
+	}
+	var sources []source
+	if len(doc.IceStats.Source) > 0 && doc.IceStats.Source[0] == '[' {
+		if json.Unmarshal(doc.IceStats.Source, &sources) != nil {
+			return 0, false
+		}
+	} else {
+		var one source
+		if json.Unmarshal(doc.IceStats.Source, &one) != nil {
+			return 0, false
+		}
+		sources = []source{one}
+	}
+	for _, source := range sources {
+		if mount == "" || strings.HasSuffix(source.ListenURL, mount) {
+			return source.Listeners, true
+		}
+	}
+	return 0, true
 }
 
 func parseListeners(xml string) int {
